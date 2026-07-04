@@ -14,6 +14,12 @@ interface Config {
         platform?: number;
         data_dir: string;
     };
+    pushplus?: {
+        token: string;
+    };
+    web?: {
+        port: number;
+    };
     ocr: {
         secretId: string;
         secretKey: string;

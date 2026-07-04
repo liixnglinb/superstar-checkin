@@ -24,11 +24,17 @@ export default async function login(account: string, password: string) {
 
     if (response.status) {
         const cookies = jar.toJSON().cookies
-        const uid = parseInt(cookies.find((cookie) => cookie.key === "UID").value);
+        const uid = parseInt(cookies.find((cookie) => cookie.key === "UID")!.value)
+        const fidCookie = cookies.find((cookie) => cookie.key === "fid")
+        const fid = fidCookie ? parseInt(fidCookie.value) : 0
+
+        // 用 mobilelearn 子域取 cookie，确保签到请求能匹配
+        const cookieForSign = jar.getCookieStringSync("https://mobilelearn.chaoxing.com")
 
         return {
-            cookie: jar.getCookieStringSync("https://chaoxing.com"),
-            uid: uid,
+            cookie: cookieForSign,
+            uid,
+            fid,
         }
     }
     else {

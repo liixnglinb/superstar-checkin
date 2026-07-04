@@ -4,11 +4,12 @@ import jsdom from 'jsdom'
 
 const {JSDOM} = jsdom //在jsdom中导出JSDOM对象
 const {window} = new JSDOM('<!doctype html><html><body></body></html>', {url: 'https://im.chaoxing.com/webim/me'}); //导出JSDOM中的window对象
-(global as any).window = window; //将window对象设置为nodejs中全局对象;
-(global as any).navigator = window.navigator;
-(global as any).location = window.location;
-(global as any).document = window.document;
-(global as any).WebSocket = window.WebSocket
+// 使用 Object.defineProperty 避免 Node.js v21+ 的 navigator getter 冲突
+Object.defineProperty(global, 'window', { value: window, writable: true, configurable: true });
+Object.defineProperty(global, 'navigator', { value: window.navigator, writable: true, configurable: true });
+Object.defineProperty(global, 'location', { value: window.location, writable: true, configurable: true });
+Object.defineProperty(global, 'document', { value: window.document, writable: true, configurable: true });
+Object.defineProperty(global, 'WebSocket', { value: window.WebSocket, writable: true, configurable: true });
 import '../sdk/Easemob-chat-3.6.3'
 import {info, success, warn} from '../utils/log'
 import getImToken from '../requests/getImToken'
