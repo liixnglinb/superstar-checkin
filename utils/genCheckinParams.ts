@@ -14,7 +14,7 @@ export const genQrcodeCheckinParams = (params: QrcodeCheckinParamsSrc) => ({
     useragent: '',
     latitude: -1,
     longitude: -1,
-    fid: 200,
+    // fid 改为从 cookie 提取，不再硬编码
     appType: 15,
 })
 
@@ -28,7 +28,7 @@ export const genSimpleCheckinParams = (params: {
     useragent: '',
     latitude: -1,
     longitude: -1,
-    fid: 200,
+    // fid 改为从 cookie 提取，不再硬编码
     appType: 15,
 })
 
@@ -44,7 +44,7 @@ export const genGeoCheckinParams = (params: {
     ...params,
     clientip: '',
     useragent: '',
-    fid: 200,
+    // fid 改为从 cookie 提取，不再硬编码
     appType: 15,
     ifTiJiao: 1
 })

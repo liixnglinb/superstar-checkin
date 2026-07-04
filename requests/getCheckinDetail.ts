@@ -1,7 +1,8 @@
 import axios from 'axios'
+import * as fs from 'fs'
 import {MOBILE_AGENT} from '../constants'
 import CheckinDetailRet from '../types/CheckinDetailRet'
-import {error} from '../utils/log'
+import {error, info as logInfo} from '../utils/log'
 import CheckinInfo from '../types/CheckinInfo'
 
 /**
@@ -22,6 +23,8 @@ export default async (cookie: string, activeId: number | string): Promise<Checki
 
     let location = null
     if (ret.data.result === 1) {
+        // 打印完整 API 返回，排查经纬度字段迁移
+        fs.appendFileSync('data/debug.log', `\n[${new Date().toLocaleString('zh-CN')}] 完整API返回: ${JSON.stringify(ret.data.data)}`)
         let type: 'qr' | 'gesture' | 'location' | 'photo' | 'normal'
         switch (ret.data.data.otherId) {
             case 2:
@@ -34,10 +37,15 @@ export default async (cookie: string, activeId: number | string): Promise<Checki
                 type = 'location'
                 if (ret.data.data.ifopenAddress) {
                     // 是指定位置的签到
+                    const rawLat = ret.data.data.locationLatitude
+                    const rawLon = ret.data.data.locationLongitude
+                    const debugMsg = `API原始经纬度: lat=${rawLat} (${typeof rawLat}), lon=${rawLon} (${typeof rawLon}), range=${ret.data.data.locationRange}, locationText=${ret.data.data.locationText}`
+                    logInfo(debugMsg)
+                    fs.appendFileSync('data/debug.log', `\n[${new Date().toLocaleString('zh-CN')}] ${debugMsg}`)
                     location = {
                         address: ret.data.data.locationText,
-                        lat: ret.data.data.locationLatitude,
-                        lon: ret.data.data.locationLongitude,
+                        lat: rawLat,
+                        lon: rawLon,
                         range: ret.data.data.locationRange,
                     };
                 }

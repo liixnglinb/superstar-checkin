@@ -3,4 +3,5 @@ export default interface AccountMetaData{
     name: string
     schoolname: string
     uid: number
+    fid: number
 }

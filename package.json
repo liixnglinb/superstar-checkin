@@ -6,7 +6,8 @@
     "start": "node build/index.js",
     "start-docker": "node index.js",
     "dev": "ts-node index.ts",
-    "build": "tsc && cp -a --reflink=auto --remove-destination ./sdk ./build/"
+    "build": "node node_modules/typescript/bin/tsc && node -e \"var fs=require('fs');var p=require('path');var src='sdk';var dst='build/sdk';fs.mkdirSync(dst,{recursive:true});fs.readdirSync(src).forEach(function(f){fs.copyFileSync(p.join(src,f),p.join(dst,f))})\"",
+    "postinstall": "node -e \"try{require('fs').mkdirSync('data',{recursive:true})}catch(e){}\""
   },
   "bin": "build/index.js",
   "files": [
@@ -19,7 +20,6 @@
     "@types/jsdom": "^20.0.0",
     "@types/node": "^18.7.13",
     "ts-node": "^10.9.1",
-    "tsc": "^2.0.4",
     "typescript": "^4.8.2"
   },
   "dependencies": {
@@ -27,10 +27,11 @@
     "axios-cookiejar-support": "^4.0.3",
     "chalk": "4",
     "cheerio": "1.0.0-rc.12",
+    "express": "^5.2.1",
     "jsdom": "^20.0.0",
-    "oicq": "git+https://github.com/Clansty/oicq#commit=6c3f34adc681e73c2511f1f49a79fb387dcd1555",
     "tencentcloud-sdk-nodejs": "^4.0.421",
     "tough-cookie": "^4.1.2",
+    "ws": "^8.21.0",
     "yaml": "^2.1.1"
   },
   "packageManager": "yarn@3.2.3"

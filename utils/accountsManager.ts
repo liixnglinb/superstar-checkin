@@ -13,7 +13,9 @@ const loginAndSaveInfo = async (account: Account) => {
     info('正在获取 Cookie')
     const getCookieRes = await login(account.username, account.password)
     const cookie = getCookieRes.cookie
+    const fid = getCookieRes.fid
     await accountsManager.setAccountData(account.username, 'cookie', cookie)
+    await accountsManager.setAccountData(account.username, 'fid', fid)
     success('Cookie 获取成功，正在获取用户信息')
     const userInfo = await getUserInfo(cookie)
     const {schoolname, name, uid} = userInfo
@@ -46,6 +48,7 @@ const accountsManager = {
         return {
             cookie: await db.getMeta<string>(`cookie_${username}`),
             uid: await db.getMeta<number>(`uid_${username}`),
+            fid: await db.getMeta<number>(`fid_${username}`) || 0,
             schoolname: await db.getMeta<string>(`schoolname_${username}`),
             name: await db.getMeta<string>(`name_${username}`),
         }

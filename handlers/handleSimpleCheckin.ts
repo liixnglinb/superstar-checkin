@@ -2,11 +2,11 @@ import {genSimpleCheckinParams} from '../utils/genCheckinParams'
 import checkin from '../requests/checkin'
 import AccountMetaData from '../types/AccountMetaData'
 
-export default async (activeId: string | number, account: AccountMetaData) => {
+export default async (activeId: string | number, account: AccountMetaData, extra?: { courseId?: number; classId?: number }) => {
     const params = genSimpleCheckinParams({
         uid: account.uid,
         name: account.name,
         activeId,
     })
-    return await checkin(account.cookie, params)
+    return await checkin(account.cookie, params, extra)
 }

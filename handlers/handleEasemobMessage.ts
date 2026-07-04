@@ -1,6 +1,7 @@
 import ImMessageCheckin from '../types/ImMessageCheckin'
 import {error, info, warn} from '../utils/log'
 import {pushQMsg, pushQMsgToFirstGroup} from '../providers/bot'
+import {pushToWechat} from '../utils/pushNotification'
 import config from '../providers/config'
 import handleSign from './handleCheckin'
 import getCheckinDetail from '../requests/getCheckinDetail'
@@ -25,6 +26,7 @@ export default async (message: ImMessageCheckin, cookie: string) => {
         const aid = message.ext.attachment.att_chat_course.aid
         const courseName = message.ext.attachment.att_chat_course.courseInfo.coursename
         const courseId = Number(message.ext.attachment.att_chat_course.courseInfo.courseid)
+        const classId = Number(message.ext.attachment.att_chat_course.courseInfo.classid)
         if (config.ignoreCourses && config.ignoreCourses.includes(courseId)) return
         if (!aid) {
             warn('处理 IM 消息时出现异常，找不到 aid')
@@ -55,12 +57,15 @@ export default async (message: ImMessageCheckin, cookie: string) => {
                     }
                     pushQMsg(messageToSend)
                     setTimeout(async () => {
-                        pushQMsg(await handleSign(aid, courseId, checkinInfo))
+                        const result = await handleSign(aid, courseId, classId, checkinInfo, courseName)
+                        pushQMsg(result)
+                        pushToWechat(`✅ ${courseName} 签到结果`, result)
                     }, sleepTime * 1000)
                 }
                 else {
                     info('收到二维码签到')
                     pushQMsg(`收到 ${courseName} 的二维码签到，aid 为 ${aid}，需要提供一张二维码`)
+                    pushToWechat(`⚠️ ${courseName} - 二维码签到`, `需要提供一张二维码\naid: ${aid}`)
                 }
                 break
             default:
