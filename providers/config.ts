@@ -13,12 +13,18 @@ interface Config {
         ignore?: number[];
         platform?: number;
         data_dir: string;
+        accessToken?: string;
     };
     pushplus?: {
         token: string;
     };
     web?: {
         port: number;
+        token?: string;
+        allowedOrigin?: string;
+    };
+    geocode?: {
+        amapKey?: string;
     };
     ocr: {
         secretId: string;

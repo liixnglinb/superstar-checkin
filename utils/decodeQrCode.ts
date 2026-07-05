@@ -1,27 +1,31 @@
-const tencentcloud = require("tencentcloud-sdk-nodejs");
-const OcrClient = tencentcloud.ocr.v20181119.Client;
+import * as tencentcloud from 'tencentcloud-sdk-nodejs'
 import config from '../providers/config'
 
-export default (url: string) => new Promise<string>(async (resolve, reject) => {
-    const client = new OcrClient({
-      credential: {
-        secretId: config.ocr.secretId,
-        secretKey: config.ocr.secretKey
-      },
-      region: "ap-shanghai",
-      profile: {
-        httpProfile: {
-          endpoint: "ocr.tencentcloudapi.com",
-        },
-      },
-    });
-    client.QrcodeOCR({
-      "ImageUrl": url
-    }).then(
-      (data: any) => {
-        resolve(data.CodeResults[0].Url);
-      }, (err: any) => {
-        reject(err);
-      }
-    );
-})
+const OcrClient = tencentcloud.ocr.v20181119.Client
+
+let client: any = null
+
+function getClient() {
+    if (!client) {
+        client = new OcrClient({
+            credential: {
+                secretId: config.ocr.secretId,
+                secretKey: config.ocr.secretKey,
+            },
+            region: 'ap-shanghai',
+            profile: {
+                httpProfile: {
+                    endpoint: 'ocr.tencentcloudapi.com',
+                },
+            },
+        })
+    }
+    return client
+}
+
+export default async (url: string): Promise<string> => {
+    const data: any = await getClient().QrcodeOCR({
+        ImageUrl: url,
+    })
+    return data.CodeResults[0].Url
+}

@@ -10,7 +10,7 @@ import {error, info} from './log'
 export const pushToWechat = async (title: string, content: string) => {
     if (!config.pushplus?.token) return
     try {
-        await axios.post('http://www.pushplus.plus/send', {
+        await axios.post('https://www.pushplus.plus/send', {
             token: config.pushplus.token,
             title,
             content,

@@ -1,9 +1,10 @@
 import axios from 'axios'
-import * as fs from 'fs'
 import {MOBILE_AGENT} from '../constants'
 import {info, error} from '../utils/log'
 import {wrapper} from 'axios-cookiejar-support'
 import {CookieJar} from 'tough-cookie'
+
+const DEBUG = process.env.DEBUG === '1'
 
 // 完整签到流程（preSign + analysis + stuSignajax）
 export default async function checkin(
@@ -69,14 +70,14 @@ export async function doSubmit(
     if (params.address) signParams.ifTiJiao = 1
 
     const fullUrl = axios.getUri({ url: 'https://mobilelearn.chaoxing.com/pptSign/stuSignajax', params: signParams })
-    fs.appendFileSync('data/debug.log', `\n[${new Date().toLocaleString('zh-CN')}] URL: ${fullUrl}`)
+    if (DEBUG) info('签到URL: ' + fullUrl)
 
     const res = await client.get('https://mobilelearn.chaoxing.com/pptSign/stuSignajax', {
         headers: { Cookie: cookie, 'User-Agent': MOBILE_AGENT },
         params: signParams,
     })
     const data = res.data
-    fs.appendFileSync('data/debug.log', `\n  -> ${typeof data === 'string' ? data : JSON.stringify(data)}`)
+    if (DEBUG) info('签到返回: ' + (typeof data === 'string' ? data : JSON.stringify(data)))
 
     if (typeof data === 'string') return data
     if (typeof data === 'object' && data !== null) {
