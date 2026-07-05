@@ -1,5 +1,6 @@
 import fs from 'fs/promises'
 import fsOrigin from 'fs'
+import {warn} from '../utils/log'
 
 let meta: Record<string, any> = {}
 
@@ -12,6 +13,7 @@ export const connect = async () => {
         const metaStr = metaStream.toString()
         meta = JSON.parse(metaStr)
     } catch (error) {
+        warn('读取数据文件失败,将使用空数据: ' + jsonFile, error)
     } // 试图读取数据，没有数据就当无事发生
 }
 

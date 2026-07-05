@@ -75,11 +75,13 @@ export async function triangulateAndCheckin(
         if (mm) {
             const md = parseFloat(mm[1])
             if (md < best.dist) {
+                const prevBestLat = best.lat
+                const prevBestLon = best.lon
                 best = { lat: midLat, lon: midLon, dist: md, result: mr }
                 // 还在50米外？再搜一次
                 if (md > 50) {
-                    const qLat = (midLat + best.lat) / 2
-                    const qLon = (midLon + best.lon) / 2
+                    const qLat = (midLat + prevBestLat) / 2
+                    const qLon = (midLon + prevBestLon) / 2
                     const qr = await probe(qLat, qLon)
                     info(`再二分: (${qLat.toFixed(6)},${qLon.toFixed(6)}) -> ${qr}`)
                     if (!qr.includes('不在可签到范围内')) { saveLearnedLocation(address, qLat, qLon); return qr }

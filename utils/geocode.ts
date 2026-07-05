@@ -1,12 +1,15 @@
 import axios from 'axios'
 import {info} from './log'
+import config from '../providers/config'
 
 // 多源地理编码：优先高德→百度→OSM
 export async function geocodeAddress(address: string): Promise<{ lat: number; lon: number } | null> {
     // 1. 高德 API（精度最高）
-    const amapKey = 'd110b0e5cb3a1e4d3e4823e3b2b3a7b3'
-    const r = await tryAmap(address, amapKey)
-    if (r) return r
+    const amapKey = config.geocode?.amapKey || process.env.AMAP_KEY || ''
+    if (amapKey) {
+        const r = await tryAmap(address, amapKey)
+        if (r) return r
+    }
 
     // 2. 百度地图 Place API（无需 key 的公开接口）
     const r2 = await tryBaidu(address)

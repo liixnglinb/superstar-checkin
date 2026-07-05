@@ -1,5 +1,5 @@
 function formatDate(fmt: string): string {
-    var o = {
+    const o = {
         "M+": this.getMonth() + 1, //月份
         "d+": this.getDate(), //日
         "h+": this.getHours(), //小时
@@ -14,7 +14,7 @@ function formatDate(fmt: string): string {
             (this.getFullYear() + "").substr(4 - RegExp.$1.length)
         );
     }
-    for (var k in o) {
+    for (const k in o) {
         if (new RegExp("(" + k + ")").test(fmt)) {
             fmt = fmt.replace(
                 RegExp.$1,

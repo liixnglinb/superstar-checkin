@@ -1,0 +1,8 @@
+node_modules
+build
+data
+qrcode
+config.yaml
+.git
+*.log
+debug.log

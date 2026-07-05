@@ -26,9 +26,39 @@ export const loginBot = () => new Promise<void>(resolve => {
 
   const wss = new WebSocketServer({ port: 8081 })
 
-  wss.on('connection', (ws) => {
+  let resolved = false
+
+  const timeout = setTimeout(() => {
+    if (!resolved) {
+      resolved = true
+      warn('Lagrange.OneBot 30秒内未连接，继续启动（机器人功能不可用）')
+      resolve()
+    }
+  }, 30000)
+
+  wss.on('connection', (ws, req) => {
+    // access_token 校验
+    const expectedToken = config.bot.accessToken
+    if (expectedToken) {
+      const authHeader = req.headers.authorization
+      const url = new URL(req.url || '', `http://${req.headers.host}`)
+      const queryToken = url.searchParams.get('access_token')
+      const token = authHeader?.replace('Bearer ', '') || queryToken
+      if (token !== expectedToken) {
+        error('Lagrange access_token 校验失败，拒绝连接')
+        ws.close(4001)
+        return
+      }
+    }
+
     success('Lagrange.OneBot 已连接，QQ 机器人就绪')
     wsConnection = ws
+
+    if (!resolved) {
+      resolved = true
+      clearTimeout(timeout)
+      resolve()
+    }
 
     ws.on('message', (data) => {
       try {
@@ -55,8 +85,6 @@ export const loginBot = () => new Promise<void>(resolve => {
   })
 
   info('等待 Lagrange.OneBot 连接... (ws://127.0.0.1:8081/onebot/v11/ws)')
-  // 不在这里 resolve，等 connection 事件
-  setTimeout(() => resolve(), 1000)
 })
 
 export const pushQMsg = async (message: string) => {
