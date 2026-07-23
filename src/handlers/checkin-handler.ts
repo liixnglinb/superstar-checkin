@@ -17,6 +17,8 @@ export class CheckinHandler {
   constructor(config: AppConfig, accountManager: AccountManager) {
     this.config = config
     this.accountManager = accountManager
+    // 根据配置启用 UA 轮换（防检测增强）
+    CheckinEngine.useragentRotation = config.checkin.antiDetect.useragentRotation
   }
 
   /**
@@ -35,8 +37,7 @@ export class CheckinHandler {
     // 随机延迟（防检测）
     if (this.config.checkin.antiDetect.randomDelay) {
       const { min, max } = this.config.checkin.delay
-      const delaySec = Math.floor(Math.random() * (max - min + 1) + min)
-      logger.info(`延迟 ${delaySec} 秒后签到...`)
+      logger.info(`随机延迟 ${min}~${max} 秒后签到...`)
       await randomDelay(min, max)
     }
 

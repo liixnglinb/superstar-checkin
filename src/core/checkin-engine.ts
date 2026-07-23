@@ -4,7 +4,7 @@ import { wrapper } from 'axios-cookiejar-support'
 import { MOBILE_AGENT, API, DEFAULTS } from '../constants'
 import type { AccountMetaData, CheckinInfo, CheckinResult, CheckinType } from '../types'
 import { logger } from '../utils/logger'
-import { randomDelay, addGpsDrift } from '../utils/anti-detect'
+import { randomDelay, addGpsDrift, getRandomMobileUA } from '../utils/anti-detect'
 import { geocodeAddress } from '../utils/geocode'
 import { getLearnedLocation, saveLearnedLocation } from '../utils/location'
 import { getProxyConfig } from '../providers/runtime-config'
@@ -27,12 +27,19 @@ function parseJsonSafe(data: any): any {
 }
 
 export class CheckinEngine {
+  /** 是否启用 UA 轮换（由 CheckinHandler 根据配置设置） */
+  static useragentRotation = false
+
+  /** 当前请求使用的手机 UA：启用轮换时从池中取，否则用默认 */
+  private static mobileUA(): string {
+    return CheckinEngine.useragentRotation ? getRandomMobileUA() : MOBILE_AGENT
+  }
   /**
    * 获取签到活动详情
    */
   static async getDetail(cookie: string, activeId: string | number): Promise<CheckinInfo> {
     const res = await axios.get(API.CHECKIN_DETAIL, {
-      headers: { Cookie: cookie, 'User-Agent': MOBILE_AGENT },
+      headers: { Cookie: cookie, 'User-Agent': this.mobileUA() },
       params: { activeId },
       proxy: getProxyConfig(),
     })
@@ -79,7 +86,7 @@ export class CheckinEngine {
     extra?: { courseId?: number | string; classId?: number | string },
   ) {
     await client.get(API.PRE_SIGN, {
-      headers: { Cookie: cookie, 'User-Agent': MOBILE_AGENT },
+      headers: { Cookie: cookie, 'User-Agent': this.mobileUA() },
       params: {
         courseId: extra?.courseId || '',
         classId: extra?.classId || '',
@@ -92,7 +99,7 @@ export class CheckinEngine {
     // analysis 步骤（非必须但推荐）
     try {
       const aRes = await client.get(API.ANALYSIS, {
-        headers: { Cookie: cookie, 'User-Agent': MOBILE_AGENT },
+        headers: { Cookie: cookie, 'User-Agent': this.mobileUA() },
         params: { vs: 1, DB_STRATEGY: 'RANDOM', aid: params.activeId },
       })
       const text = String(aRes.data)
@@ -105,7 +112,7 @@ export class CheckinEngine {
       }
       if (code) {
         await client.get(API.ANALYSIS2, {
-          headers: { Cookie: cookie, 'User-Agent': MOBILE_AGENT },
+          headers: { Cookie: cookie, 'User-Agent': this.mobileUA() },
           params: { DB_STRATEGY: 'RANDOM', code },
         })
       }
@@ -147,7 +154,7 @@ export class CheckinEngine {
     if (params.address) signParams.ifTiJiao = 1
 
     const res = await client.get(API.SIGN_AJAX, {
-      headers: { Cookie: cookie, 'User-Agent': MOBILE_AGENT },
+      headers: { Cookie: cookie, 'User-Agent': this.mobileUA() },
       params: signParams,
     })
 
@@ -229,7 +236,7 @@ export class CheckinEngine {
   static async uploadPhoto(account: AccountMetaData, filePath: string): Promise<string> {
     // 1. 获取网盘 token
     const tokenResp = await axios.get(API.PHOTO_TOKEN, {
-      headers: { Cookie: account.cookie, 'User-Agent': MOBILE_AGENT },
+      headers: { Cookie: account.cookie, 'User-Agent': this.mobileUA() },
       proxy: getProxyConfig(),
     })
     const tokenJson = parseJsonSafe(tokenResp.data)
@@ -246,7 +253,7 @@ export class CheckinEngine {
     const upResp = await axios.post(API.PHOTO_UPLOAD, form, {
       headers: {
         Cookie: account.cookie,
-        'User-Agent': MOBILE_AGENT,
+        'User-Agent': this.mobileUA(),
         Referer: 'https://pan-yz.chaoxing.com/',
       },
       proxy: getProxyConfig(),

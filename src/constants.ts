@@ -62,5 +62,5 @@ export const CHECKIN_TYPE_MAP: Record<number, string> = {
   4: 'location',
 } as const
 
-// 二维码正则
-export const QR_REGEX = /(SIGNIN:|e\?).*(aid=|id=)(\d+)(&.*)?&enc=([\dA-F]+)/
+// 二维码正则（enc 为 Hex，大小写均匹配）
+export const QR_REGEX = /(SIGNIN:|e\?).*(aid=|id=)(\d+)(&.*)?&enc=([\dA-Fa-f]+)/
