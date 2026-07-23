@@ -31,7 +31,11 @@ import * as path from 'path'
 
 // 全局错误兜底
 process.on('unhandledRejection', (reason) => logger.error('未处理的 Promise 拒绝:', reason))
-process.on('uncaughtException', (err) => logger.error('未捕获的异常:', err))
+// uncaughtException 后进程状态不确定，记录后退出 1（Node 官方推荐）
+process.on('uncaughtException', (err) => {
+  logger.error('未捕获的异常，进程将退出:', err)
+  process.exit(1)
+})
 
 async function main() {
   // 1. 加载配置
@@ -123,7 +127,7 @@ async function main() {
         logger.warn(`${courseName} 是二维码签到，等待上传图片`)
 
         const baseUrl = config.dingtalk?.publicUrl || `http://127.0.0.1:${config.dingtalk?.port || 3456}`
-        const uploadUrl = `${baseUrl}/upload?type=qr`
+        const uploadUrl = `${baseUrl}/upload?type=qr${config.dingtalk?.token ? `&token=${encodeURIComponent(config.dingtalk.token)}` : ''}`
 
         await notifier.notify(
           `⚠️ ${courseName} - 二维码签到`,
@@ -143,7 +147,7 @@ async function main() {
           setPendingPhoto(aid, { courseName, courseId, classId })
           logger.warn(`${courseName} 是拍照签到，等待上传照片`)
           const baseUrl = config.dingtalk?.publicUrl || `http://127.0.0.1:${config.dingtalk?.port || 3456}`
-          const uploadUrl = `${baseUrl}/upload?type=photo`
+          const uploadUrl = `${baseUrl}/upload?type=photo${config.dingtalk?.token ? `&token=${encodeURIComponent(config.dingtalk.token)}` : ''}`
           await notifier.notify(
             `⚠️ ${courseName} - 拍照签到`,
             `请上传一张照片（与二维码签到同模式）\naid: ${aid}\n\n手机上传: ${uploadUrl}`,

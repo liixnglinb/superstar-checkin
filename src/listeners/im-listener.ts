@@ -15,7 +15,15 @@ Object.defineProperty(global, 'location', { value: window.location, writable: tr
 Object.defineProperty(global, 'document', { value: window.document, writable: true, configurable: true })
 Object.defineProperty(global, 'WebSocket', { value: window.WebSocket, writable: true, configurable: true })
 
-import '../sdk/Easemob-chat-3.6.3'
+// 学习通环信 SDK：文件较大且为外部资源，用 require 动态加载并容错。
+// 缺失时 IM 监听不可用，但进程仍可启动（轮询/上传页不受影响）。
+let webimAvailable = true
+try {
+  require('../sdk/Easemob-chat-3.6.3')
+} catch (e: any) {
+  webimAvailable = false
+  // 模块加载阶段不能引用 logger（顺序未定），延迟到构造时再打日志
+}
 
 type MessageHandler = (message: ImMessage, cookie: string) => void
 
@@ -43,6 +51,10 @@ export class ImListener {
 
   constructor(tokenRefreshMs = 20 * 60 * 1000) {
     this.tokenRefreshMs = tokenRefreshMs
+    if (!webimAvailable) {
+      logger.error('Easemob SDK 缺失（src/sdk/Easemob-chat-3.6.3），IM 监听不可用，请改用 poll/hybrid 模式')
+      return
+    }
     this.setupWebIM()
   }
 
@@ -128,6 +140,9 @@ export class ImListener {
       onOffline: () => logger.warn('IM 下线'),
       onError: async (message: any) => {
         logger.warn('IM 协议错误', message)
+        // 任何错误都先标记断开，保证看门狗状态一致
+        this.connected = false
+        this.onStatusChange?.(false)
         if (message.type === 40) {
           // 身份验证失败：重新获取 token 并重连
           W.WebIM.conn.close()
@@ -148,22 +163,7 @@ export class ImListener {
 
   /** 重新拉取 IM token 并打开连接 */
   private async openWithFreshToken(): Promise<void> {
-    const axios = (await import('axios')).default
-    const cheerio = (await import('cheerio')).default
-
-    const res = await axios.get('https://im.chaoxing.com/webim/me', {
-      headers: {
-        Cookie: this.cookie,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-      responseType: 'text',
-      proxy: getProxyConfig(),
-    })
-
-    const $ = cheerio.load(res.data)
-    const token = $('#myToken').text()
-    if (!token) throw new Error('未能从 webim/me 页面获取 IM token（Cookie 可能已失效）')
-
+    const token = await this.fetchToken()
     const W: any = window as any
     W.WebIM.conn.open({
       apiUrl: EASEMOB.API_URL,
@@ -190,18 +190,38 @@ export class ImListener {
     }, backoff)
   }
 
-  /** 周期性刷新 token（保持会话不过期） */
+  /** 周期性刷新 token（保持会话不过期）。
+   *  仅刷新 token 缓存，不重复调用 conn.open（重复 open 会触发环信异常）。
+   *  连接断开时交给重连逻辑处理，这里只维护缓存。 */
   private startTokenRefresh() {
     if (this.refreshTimer) return
     this.refreshTimer = setInterval(async () => {
       if (!this.connected) return // 未连接时交给重连逻辑处理
       try {
-        await this.openWithFreshToken()
+        await this.fetchToken()
         logger.debug('IM token 已刷新')
       } catch (e: any) {
         logger.warn(`IM token 刷新失败: ${e.message}`)
       }
     }, this.tokenRefreshMs)
+  }
+
+  /** 仅拉取 token，不触发 conn.open */
+  private async fetchToken(): Promise<string> {
+    const axios = (await import('axios')).default
+    const cheerio = (await import('cheerio')).default
+    const res = await axios.get('https://im.chaoxing.com/webim/me', {
+      headers: {
+        Cookie: this.cookie,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+      responseType: 'text',
+      proxy: getProxyConfig(),
+    })
+    const $ = cheerio.load(res.data)
+    const token = $('#myToken').text()
+    if (!token) throw new Error('未能从 webim/me 页面获取 IM token（Cookie 可能已失效）')
+    return token
   }
 
   dispose() {

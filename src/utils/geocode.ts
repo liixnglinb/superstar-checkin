@@ -24,7 +24,7 @@ export async function geocodeAddress(
   }
 
   // 2. 百度
-  const r2 = await tryBaidu(address)
+  const r2 = await tryBaidu(address, baiduKey)
   if (r2) return r2
 
   // 3. OSM
@@ -50,10 +50,12 @@ async function tryAmap(address: string, key: string): Promise<GeoResult | null> 
   return null
 }
 
-async function tryBaidu(address: string): Promise<GeoResult | null> {
+async function tryBaidu(address: string, baiduKey?: string): Promise<GeoResult | null> {
   try {
+    const params: Record<string, any> = { wd: address, cid: 1, type: 0 }
+    if (baiduKey) params.ak = baiduKey
     const res = await axios.get('https://map.baidu.com/su', {
-      params: { wd: address, cid: 1, type: 0 },
+      params,
       headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://map.baidu.com/' },
       timeout: 5000,
     })

@@ -8,7 +8,6 @@
     "build": "tsc && node -e \"var fs=require('fs'),p=require('path');var s='src/sdk',d='build/sdk';fs.mkdirSync(d,{recursive:true});if(fs.existsSync(s))fs.readdirSync(s).forEach(f=>fs.copyFileSync(p.join(s,f),p.join(d,f)))\"",
     "start": "node build/index.js",
     "docker-start": "node build/index.js",
-    "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": ["chaoxing", "checkin", "学习通", "签到"],
@@ -26,15 +25,16 @@
   },
   "optionalDependencies": {
     "tencentcloud-sdk-nodejs": "^4.0.0",
-    "nodemailer": "^6.9.0"
+    "nodemailer": "^6.9.0",
+    "sharp": "^0.33.0",
+    "jsqr": "^1.4.0"
   },
   "devDependencies": {
     "@types/jsdom": "^21.0.0",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.0",
     "typescript": "^5.4.0",
-    "ts-node": "^10.9.0",
-    "eslint": "^9.0.0"
+    "ts-node": "^10.9.0"
   },
   "engines": {
     "node": ">=18.0.0"
