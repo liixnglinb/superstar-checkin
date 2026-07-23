@@ -66,7 +66,10 @@ async function main() {
     logger.info(`上传页服务已启动: http://0.0.0.0:${dtPort}`)
   }
 
-  // 3. 账号管理（登录失败不致命：上传页/二维码通道仍应可用，待代理/网络恢复后重试）
+  // 3. 通知管理器（先初始化，供账号刷新失败等回调引用，避免 TDZ）
+  const notifier = new NotificationManager(config.notify.channels)
+
+  // 4. 账号管理（登录失败不致命：上传页/二维码通道仍应可用，待代理/网络恢复后重试）
   const accountManager = new AccountManager(config.accounts)
   try {
     await accountManager.checkAll()
@@ -80,9 +83,6 @@ async function main() {
       .catch(() => {})
   }
   accountManager.startAutoRefresh()
-
-  // 4. 通知管理器
-  const notifier = new NotificationManager(config.notify.channels)
 
   // 5. 签到处理器
   const checkinHandler = new CheckinHandler(config, accountManager)
@@ -209,6 +209,11 @@ async function main() {
   }
 
   if (config.listener.mode === 'poll' || config.listener.mode === 'hybrid') {
+    if (courses.length === 0) {
+      logger.error('课程列表为空，轮询监听器将以空列表启动（无法发现任何签到），请检查登录/Cookie 是否正常')
+      await notifier.notify('⚠️ 轮询监听异常', '课程列表为空，轮询无法发现签到活动，请检查登录状态')
+        .catch(() => {})
+    }
     const pollListener = new PollListener(config.listener.pollInterval)
     pollListener.onActivity((aid, courseId, classId, courseName) => {
       watchdog.lastActivityAt = Date.now()

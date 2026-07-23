@@ -118,10 +118,12 @@ export class DingTalkServer {
 
       // 二维码图片上传接口
       if (req.method === 'POST' && req.url?.startsWith('/upload/image')) {
-        // 可选 token 鉴权
+        // 可选 token 鉴权：优先读 Authorization header，兼容旧上传页的 ?token=
         if (this.token) {
           const url = new URL(req.url, `http://localhost:${this.port}`)
-          if (url.searchParams.get('token') !== this.token) {
+          const headerToken = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '')
+          const queryToken = url.searchParams.get('token') || ''
+          if (headerToken !== this.token && queryToken !== this.token) {
             res.writeHead(403, { 'Content-Type': 'application/json' })
             res.end(JSON.stringify({ error: 'token 校验失败' }))
             return
