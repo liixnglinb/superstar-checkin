@@ -1,18 +1,21 @@
 {
   "compilerOptions": {
     "module": "CommonJS",
-    "target": "ESNext",
+    "target": "ES2022",
     "esModuleInterop": true,
     "sourceMap": true,
     "moduleResolution": "Node",
     "outDir": "build",
+    "rootDir": "src",
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
-    "lib": [
-      "ESNext"
-    ]
+    "strict": true,
+    "noImplicitAny": false,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "lib": ["ES2022"]
   },
-  "exclude": [
-    "node_modules"
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "build"]
 }
