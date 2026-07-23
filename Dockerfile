@@ -1,24 +1,24 @@
-FROM node:18-alpine
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+COPY package.json package-lock.json* yarn.lock* ./
+RUN npm ci --ignore-scripts
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine
 
 WORKDIR /app
 
-# 复制依赖文件
-COPY package.json package-lock.json* yarn.lock* ./
+COPY --from=builder /app/build ./build
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/node_modules ./node_modules
 
-# 安装依赖
-RUN npm install
-
-# 复制源代码
-COPY . .
-
-# 编译 TypeScript
-RUN npm run build
-
-# 创建运行时所需目录
 RUN mkdir -p data qrcode
 
-# 暴露端口：3456 = QR API，8081 = OneBot WebSocket
 EXPOSE 3456 8081
 
-# 运行
+ENV NODE_ENV=production
+ENV CONFIG_FILE=/app/config.yaml
+
 CMD ["node", "build/index.js"]

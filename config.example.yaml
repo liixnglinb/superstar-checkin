@@ -1,87 +1,135 @@
-bot:
-  uin: # qq机器人的qq号，或者 `disabled` 可以禁用机器人组件。禁用的话，二维码签到也没有入口了
-  qrlogin: true # 使用二维码登录
-  platform: 5 # Android = 1, aPad = 2, Watch = 3, iMac = 4, iPad = 5,
-  password: # 机器人qq密码
-  notifyGroups:
-    - # 签到时通知的群组
-  qrcodeGroups:
-    - # 接收二维码的群组，有些群组不希望用来接收二维码
-  ignore:
-    - # 忽略接收二维码群组内某个群成员发送的消息，一般指定同一群的其他机器人
-  data_dir: ./data # qq 机器人数据存放文件夹
-  accessToken: # OneBot WebSocket 连接的 access_token，用于身份验证（可选）
-pushplus:
-  token: # PushPlus 微信通知 token（可选，不填则不发微信通知）
+# =====================================================
+# ChaoXing Auto Sign v3.1 - 配置文件模板
+# 复制为 config.yaml 并填入你的配置
+# =====================================================
+
+# ---- 代理（可选，强烈建议用于规避数据中心 IP 风控）----
+# 把登录/签到请求走住宅代理，可显著降低被学习通风控拦截的概率。
+# 例如 http://127.0.0.1:7890（本机代理）或住宅代理服务商提供的地址。
+# 留空或注释表示不使用代理。
+proxy: ""
+
+# ---- 学习通账号（支持多个）----
+accounts:
+  - username: 你的手机号或学号
+    password: 你的密码
+  # - username: 第二个账号
+  #   password: 第二个密码
+
+# ---- 监听模式 ----
+listener:
+  mode: im          # im = 环信IM实时监听 | poll = 定时轮询 | hybrid = 两者兼用
+  pollInterval: 30000  # 轮询间隔（毫秒），仅 poll/hybrid 模式生效
+
+# ---- 签到策略 ----
+checkin:
+  delay:
+    min: 15         # 收到签到后最少延迟秒数
+    max: 45         # 收到签到后最多延迟秒数
+  retry:
+    maxAttempts: 3  # 签到失败最大重试次数
+    delayMs: 5000   # 重试间隔（毫秒）
+  antiDetect:
+    enabled: true
+    randomDelay: true      # 随机延迟
+    useragentRotation: false  # UA 轮换
+    gpsDrift: true         # GPS 漂移模拟
+
+# ---- 地理位置 ----
+geo:
+  providers:
+    amapKey: ""     # 高德地图 API Key（推荐，精度最高）
+    # baiduKey: ""  # 百度地图 API Key（可选）
+  locations:
+    # 为每门课设置签到坐标
+    - courseId: 12345678    # 课程ID（在电脑上打开课程，地址栏中可看到）
+      lat: 30.123456        # 纬度
+      lon: 120.123456       # 经度
+      address: "XX大学XX教学楼"  # 地址文字
+    - courseId: "*"         # 通配符：找不到匹配课程时使用此坐标
+      lat: 30.123456
+      lon: 120.123456
+      address: "XX大学"
+    # 同一门课不同天在不同位置上课
+    # - courseId: 12345678
+    #   lat: 30.222222
+    #   lon: 120.222222
+    #   address: "XX实验楼"
+    #   onlyOnWeekdays: [1, 3]  # 仅周一、周三使用此坐标
+
+# ---- 通知渠道（支持多个，可同时启用）----
+notify:
+  channels:
+    # PushPlus 微信通知
+    - type: pushplus
+      enabled: false
+      config:
+        token: "你的PushPlus Token"  # https://www.pushplus.plus/
+
+    # Bark iOS 通知
+    - type: bark
+      enabled: false
+      config:
+        url: ""    # 自定义服务器地址，留空使用官方
+        key: "你的Bark Key"  # https://github.com/Finb/Bark
+
+    # 钉钉群机器人
+    - type: dingtalk
+      enabled: false
+      config:
+        webhook: "https://oapi.dingtalk.com/robot/send?access_token=xxx"
+        secret: ""  # 加签密钥（可选）
+
+    # 邮件通知（需安装 nodemailer）
+    - type: email
+      enabled: false
+      config:
+        smtpHost: "smtp.qq.com"
+        smtpPort: 465
+        from: "你的邮箱@qq.com"
+        password: "SMTP授权码"
+        to: "接收邮箱@qq.com"
+
+# ---- OCR 二维码识别（可选）----
+ocr:
+  provider: zxing   # tencent = 腾讯云OCR | zxing = 本地解码
+  tencent:
+    secretId: ""
+    secretKey: ""
+
+# ---- 钉钉（上传页服务 + 直接发图给机器人）----
+# 控制「二维码/拍照上传页」与「直接把图片发到钉钉群里给机器人」两条通道。
+# 注意：这里的「钉钉」指【企业内部应用】凭据，与下方 notify.channels 里的「群机器人 webhook」是两回事：
+#   - notify.channels 的 dingtalk = 群机器人 webhook → 用来【收】那条带上传链接的通知消息
+#   - 本节点的 dingtalk            = 企业内部应用     → 用来【起上传页】+【收你直接发的图】
+dingtalk:
+  port: 3456            # 上传页 / 回调服务端口（必填：只要想用上传页就填，服务才会启动）
+  publicUrl: ""         # 必填（手机可用）：电脑在局域网/公网的访问地址，如 http://192.168.1.100:3456
+                        # 不填则默认 http://127.0.0.1:3456 —— 只能在本机浏览器打开，手机点链接打不开！
+  appSecret: ""         # 选填：企业内部应用 AppSecret（仅「直接发图给机器人」高级方式需要）
+  appKey: ""            # 选填：企业内部应用 AppKey（仅「直接发图给机器人」方式需要，robotCode 一般等于 appKey）
+
+# ---- Web API（可选，用于远程二维码签到）----
 web:
-  port: 3456 # QR API 服务端口
-  token: # QR API Bearer Token 认证，留空则不启动 QR API
-  allowedOrigin: http://localhost # CORS 允许的来源
-geocode:
-  amapKey: # 高德地图 API Key（可选，用于地理编码地址转坐标）
-ocr:
-  secretId: # 腾讯云 ocr 识别二维码的密钥 ID
-  secretKey: # 腾讯云 ocr 识别二维码的密钥
-ignoreCourses:
-  - # 屏蔽的课程 ID，这些课程的签到和其他活动信息将被忽略
-geoLocations:
-  - courseId: # 这门课程的 ID，可以在电脑上打开课程页面，地址栏中将会显示课程 ID, 设置为 * 的项将作为找不到位置信息的课程的默认值
-    lat: # 经度
-    lon: # 纬度，请务必用 Readme 中的百度地图工具查询
-    address: # 地图显示的地址，建议去实地发个签到查看学习通上显示的地址
-  - courseId: # 另一门课的 ID，假装这门课不同天在不同的地方上课
-    lon: # 经度
-    lat: # 纬度，请务必用 Readme 中的百度地图工具查询
-    address: # 地图显示的地址，建议去实地发个签到查看学习通上显示的地址
-    onlyOnWeekdays:
-      # 数字表示的星期，0：周日，1：周一...
-      - 1
-  - courseId: # 还是刚刚那一门课的 ID，这里写的是不在上一条那些天里面的地理位置
-    lon: # 另外的经度
-    lat: # 另外的纬度
-    address: # 更上面的更优先，同一门课程请把没有 onlyOnWeekdays 的写在最下面
-# 可以配置多个账号，将使用第一个账号获取签到信息，所以第一个账号的课需要是全的
-accounts:
-  - username: # 学习通登录名
-    password: # 学习通密码
-  - username: # 学习通登录名（多个帐号）
-    password: # 学习通密码
-bot:
-  uin: # qq机器人的qq号，或者 `disabled` 可以禁用机器人组件。禁用的话，二维码签到也没有入口了
-  qrlogin: true # 使用二维码登录
-  platform: 5 # Android = 1, aPad = 2, Watch = 3, iMac = 4, iPad = 5,
-  password: # 机器人qq密码
-  notifyGroups:
-    - # 签到时通知的群组
-  qrcodeGroups:
-    - # 接收二维码的群组，有些群组不希望用来接收二维码
-  ignore:
-    - # 忽略接收二维码群组内某个群成员发送的消息，一般指定同一群的其他机器人
-  data_dir: ./data # qq 机器人数据存放文件夹
-ocr:
-  secretId: # 腾讯云 ocr 识别二维码的密钥 ID
-  secretKey: # 腾讯云 ocr 识别二维码的密钥
-ignoreCourses:
-  - # 屏蔽的课程 ID，这些课程的签到和其他活动信息将被忽略
-geoLocations:
-  - courseId: # 这门课程的 ID，可以在电脑上打开课程页面，地址栏中将会显示课程 ID, 设置为 * 的项将作为找不到位置信息的课程的默认值
-    lat: # 经度
-    lon: # 纬度，请务必用 Readme 中的百度地图工具查询
-    address: # 地图显示的地址，建议去实地发个签到查看学习通上显示的地址
-  - courseId: # 另一门课的 ID，假装这门课不同天在不同的地方上课
-    lon: # 经度
-    lat: # 纬度，请务必用 Readme 中的百度地图工具查询
-    address: # 地图显示的地址，建议去实地发个签到查看学习通上显示的地址
-    onlyOnWeekdays:
-      # 数字表示的星期，0：周日，1：周一...
-      - 1
-  - courseId: # 还是刚刚那一门课的 ID，这里写的是不在上一条那些天里面的地理位置
-    lon: # 另外的经度
-    lat: # 另外的纬度
-    address: # 更上面的更优先，同一门课程请把没有 onlyOnWeekdays 的写在最下面
-# 可以配置多个账号，将使用第一个账号获取签到信息，所以第一个账号的课需要是全的
-accounts:
-  - username: # 学习通登录名
-    password: # 学习通密码
-  - username: # 学习通登录名（多个帐号）
-    password: # 学习通密码
+  port: 3456
+  token: ""           # Bearer Token 认证，留空则不启动
+  allowedOrigin: "http://localhost"
+
+# ---- 拍照签到（可选）----
+# 默认照片路径：填一个本地图片（如 ./data/photo.jpg），拍照签到会直接上传此图。
+# 留空则每次拍照签到会通过「上传链接」向你索取照片（与二维码签到同模式）。
+photo:
+  path: ""
+
+# ---- 存储 ----
+storage:
+  dataDir: ./data
+
+# ---- 日志 ----
+log:
+  level: info         # debug | info | warn | error
+  file: ./data/app.log  # 日志文件路径（可选）
+
+# ---- 屏蔽课程 ----
+# ignoreCourses:
+#   - 99999999  # 不想自动签到的课程ID

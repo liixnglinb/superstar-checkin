@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  checkin:
+    build: .
+    container_name: chaoxing-auto-sign
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/app/data
+      - ./qrcode:/app/qrcode
+    ports:
+      - "3456:3456"   # QR API
+      - "8081:8081"   # Bot WebSocket
+    environment:
+      - TZ=Asia/Shanghai
+      - NODE_ENV=production
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

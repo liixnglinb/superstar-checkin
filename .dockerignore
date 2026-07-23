@@ -5,4 +5,4 @@ qrcode
 config.yaml
 .git
 *.log
-debug.log
+.env
