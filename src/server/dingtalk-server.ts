@@ -15,7 +15,7 @@ export interface DingTalkMessage {
   msgId?: string
 }
 
-type ImageHandler = (imageBuffer: Buffer) => Promise<void>
+type ImageHandler = (imageBuffer: Buffer, type?: 'qr' | 'photo') => Promise<void>
 
 export interface DingTalkServerOptions {
   /** 企业内部应用的 AppKey（用于获取 access_token 与图片下载） */
@@ -137,7 +137,11 @@ export class DingTalkServer {
           const buffer = Buffer.concat(chunks)
 
           if (this.imageHandler && buffer.length > 0) {
-            await this.imageHandler(buffer)
+            // 透传上传页声明的图片类型（?type=qr|photo），便于上层正确路由
+            const url = new URL(req.url, `http://localhost:${this.port}`)
+            const t = url.searchParams.get('type')
+            const type: 'qr' | 'photo' | undefined = t === 'photo' ? 'photo' : t === 'qr' ? 'qr' : undefined
+            await this.imageHandler(buffer, type)
           }
 
           res.writeHead(200, { 'Content-Type': 'application/json' })

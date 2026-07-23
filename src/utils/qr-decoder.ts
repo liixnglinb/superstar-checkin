@@ -50,12 +50,14 @@ async function decodeViaTencentOcr(
     const hashedCanonical = crypto.createHash('sha256').update(canonicalRequest).digest('hex')
     const stringToSign = `TC3-HMAC-SHA256\n${timestamp}\n${credentialScope}\n${hashedCanonical}`
 
-    const signKey = (key: string, msg: string) =>
+    // TC3-HMAC-SHA256 签名：每轮 HMAC 的密钥应为原始 Buffer（digest()），
+    // 而非 hex 字符串。参考腾讯云官方 Node.js 示例。
+    const signKey = (key: string | Buffer, msg: string) =>
       crypto.createHmac('sha256', key).update(msg).digest()
 
     const secretDate = signKey(`TC3${credentials.secretKey}`, date)
-    const secretService = signKey(secretDate.toString('hex'), service)
-    const secretSigning = signKey(secretService.toString('hex'), 'tc3_request')
+    const secretService = signKey(secretDate, service)
+    const secretSigning = signKey(secretService, 'tc3_request')
     const signature = crypto
       .createHmac('sha256', secretSigning)
       .update(stringToSign)

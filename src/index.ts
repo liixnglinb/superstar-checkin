@@ -228,8 +228,31 @@ async function main() {
 
   // 9. 钉钉回调服务器图片处理（服务已在启动早期创建并启动，这里仅绑定 onImage 回调）
   if (dtServer) {
-    dtServer.onImage(async (imageBuffer: Buffer) => {
-      // 二维码优先
+    dtServer.onImage(async (imageBuffer: Buffer, type?: 'qr' | 'photo') => {
+      // 按上传页声明的类型路由；未声明类型时维持原 QR 优先逻辑（钉钉机器人回调无类型）
+      if (type === 'photo') {
+        if (hasPendingPhoto()) {
+          const pending = takeLatestPendingPhoto()
+          if (!pending) return
+          const { aid, info } = pending
+          const photoPath = savePhotoBuffer(imageBuffer)
+          logger.info(`收到拍照签到照片，开始上传... (aid: ${aid})`)
+          const results = await checkinHandler.handlePhoto(aid, photoPath, info)
+          const summary = results
+            .map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`)
+            .join('\n')
+          await notifier.notify('✅ 拍照签到结果', summary)
+          return
+        }
+        // 声明是 photo 但无待处理：存为默认照片
+        const photoPath = savePhotoBuffer(imageBuffer)
+        setCurrentPhoto(photoPath)
+        logger.info(`已保存默认照片: ${photoPath}`)
+        await notifier.notify('📷 已保存默认照片', '后续拍照签到将直接使用此照片')
+        return
+      }
+
+      // qr 或未声明类型：二维码优先
       if (hasPendingQr()) {
         const pending = takeLatestPendingQr()
         if (!pending) return
