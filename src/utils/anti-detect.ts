@@ -37,31 +37,7 @@ const USER_AGENTS = [
   'Dalvik/2.1.0 (Linux; U; Android 14; Pixel 7 Build/UQ1A.240205.002) com.chaoxing.mobile/ChaoXingStudy_3_6.2.8_android_phone_680_72 (@Kalimdor)_b4e3f2a1',
 ]
 
-let uaIndex = 0
-
 export function getRandomMobileUA(): string {
-  uaIndex = (uaIndex + 1) % USER_AGENTS.length
-  return USER_AGENTS[uaIndex]
-}
-
-/**
- * 带重试的请求包装器
- */
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  maxAttempts: number = 3,
-  delayMs: number = 3000,
-  label: string = '',
-): Promise<T> {
-  for (let i = 1; i <= maxAttempts; i++) {
-    try {
-      return await fn()
-    } catch (e) {
-      if (i === maxAttempts) throw e
-      const wait = delayMs * i + Math.random() * 1000
-      logger.warn(`[重试] ${label} 第${i}次失败, ${Math.round(wait)}ms 后重试...`)
-      await new Promise(r => setTimeout(r, wait))
-    }
-  }
-  throw new Error('unreachable')
+  // 真正随机选取，而非轮询，增强防检测效果
+  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)]
 }

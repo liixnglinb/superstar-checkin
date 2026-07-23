@@ -68,6 +68,13 @@ export class DingTalkServer {
     this.server = http.createServer(async (req, res) => {
       this.applyCors(res)
 
+      // CORS 预检请求：浏览器在跨域 POST 前会先发 OPTIONS，必须直接返回
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204)
+        res.end()
+        return
+      }
+
       // 健康检查
       if (req.method === 'GET' && req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' })

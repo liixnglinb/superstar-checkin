@@ -158,6 +158,8 @@ export interface AppConfig {
     appSecret: string
     port: number
     publicUrl?: string
+    /** 上传页/回调的可选鉴权 token */
+    token?: string
   }
   ocr?: {
     provider: 'tencent' | 'zxing'

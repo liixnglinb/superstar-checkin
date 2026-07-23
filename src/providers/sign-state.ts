@@ -40,8 +40,20 @@ export interface PendingQr {
 
 const pendingQr = new Map<string, PendingQr>()
 
+/** 待处理项过期时间（30 分钟），避免陈旧签到永久占用 */
+const PENDING_TTL = 30 * 60 * 1000
+
+/** 清理已过期的二维码/拍照待处理项 */
+function sweepPending(m: Map<string, { createdAt: number }>) {
+  const now = Date.now()
+  for (const [k, v] of m) {
+    if (now - v.createdAt > PENDING_TTL) m.delete(k)
+  }
+}
+
 /** 登记一个待处理的二维码签到 */
 export function setPendingQr(aid: string, info: Omit<PendingQr, 'createdAt'>): void {
+  sweepPending(pendingQr)
   pendingQr.set(aid, { ...info, createdAt: Date.now() })
 }
 
@@ -92,6 +104,7 @@ export function setPendingPhoto(
   aid: string,
   info: { courseName: string; courseId: number; classId: number },
 ): void {
+  sweepPending(pendingPhotos)
   pendingPhotos.set(aid, { ...info, createdAt: Date.now() })
 }
 
