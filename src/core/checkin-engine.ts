@@ -176,6 +176,7 @@ export class CheckinEngine {
       name: account.name,
       activeId,
       uid: account.uid,
+      fid: account.fid,
     })
   }
 
@@ -267,6 +268,7 @@ export class CheckinEngine {
     classId: number,
     geoInfo?: { address: string; lat: any; lon: any; range?: string },
     configLocations?: any[],
+    geoProviders?: { amapKey?: string; baiduKey?: string },
   ): Promise<string> {
     const jar = new CookieJar()
     const client = wrapper(axios.create({ jar, proxy: getProxyConfig() }))
@@ -284,7 +286,7 @@ export class CheckinEngine {
     // 尝试地理编码
     if (apiAddress && (isNaN(lat) || lat === 0)) {
       logger.info(`地址 "${apiAddress}" 无坐标，尝试地理编码...`)
-      const coded = await geocodeAddress(apiAddress)
+      const coded = await geocodeAddress(apiAddress, geoProviders?.amapKey, geoProviders?.baiduKey)
       if (coded) { lat = coded.lat; lon = coded.lon }
     }
 

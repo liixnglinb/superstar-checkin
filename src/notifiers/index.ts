@@ -43,9 +43,15 @@ export class NotificationManager {
           logger.debug(`${name} 通知已发送: ${title}`)
         } catch (e: any) {
           logger.error(`${name} 通知发送失败: ${e.message}`)
+          throw e
         }
       }),
     )
+
+    const failed = results.filter(r => r.status === 'rejected')
+    if (failed.length === this.notifiers.size && this.notifiers.size > 0) {
+      logger.error(`全部 ${this.notifiers.size} 个通知通道均发送失败，用户可能无法收到: ${title}`)
+    }
   }
 }
 

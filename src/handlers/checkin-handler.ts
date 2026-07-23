@@ -2,6 +2,7 @@ import { CheckinEngine } from '../core/checkin-engine'
 import { logger } from '../utils/logger'
 import { randomDelay } from '../utils/anti-detect'
 import { retry } from '../utils/retry'
+import { DEFAULTS } from '../constants'
 import type { AccountMetaData, CheckinInfo, CheckinResult, AppConfig } from '../types'
 import type { AccountManager } from '../providers/account-manager'
 
@@ -66,6 +67,9 @@ export class CheckinHandler {
 
         results.push(cr)
         this.history.push(cr)
+        if (this.history.length > DEFAULTS.MAX_HISTORY) {
+          this.history = this.history.slice(-DEFAULTS.MAX_HISTORY)
+        }
         logger.info(`${meta.name}: ${cr.success ? '成功' : cr.message}`)
       } catch (e: any) {
         const cr: CheckinResult = {
@@ -98,12 +102,13 @@ export class CheckinHandler {
           account, aid, courseId, classId,
           info.location,
           this.config.geo.locations,
+          this.config.geo.providers,
         )
 
       case 'gesture':
-        logger.info('手势签到：尝试普通参数提交')
+        logger.warn('手势签到需要手势轨迹参数，普通提交大概率失败')
         return (await CheckinEngine.simpleCheckin(account, aid, { courseId, classId }))
-          .replace(/^/, '[手势]')
+          .replace(/^/, '[手势·不支持] ')
 
       case 'qr':
         throw new Error('二维码签到需要提供 enc 参数，请通过 QQ/文件夹/API 提交')

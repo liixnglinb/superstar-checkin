@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { PC_AGENT, API } from '../constants'
 import { logger } from '../utils/logger'
+import { getProxyConfig } from '../providers/runtime-config'
 
 export interface CourseInfo {
   courseId: string
@@ -21,7 +22,7 @@ export async function getCourseList(cookie: string): Promise<CourseInfo[]> {
       Cookie: cookie,
       'User-Agent': PC_AGENT,
     },
-    proxy: false,
+    proxy: getProxyConfig(),
   })
 
   if (res.data.result !== 1) {
@@ -84,7 +85,7 @@ export async function getCourseActivities(
       showNotStarted: 0,
       fid: 0,
     },
-    proxy: false,
+    proxy: getProxyConfig(),
   })
 
   if (res.data.result !== 1) return []
