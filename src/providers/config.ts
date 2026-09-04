@@ -42,7 +42,7 @@ const DEFAULT_CONFIG: Partial<AppConfig> = {
     desktop: true,
     quiet: { enabled: false, start: '23:00', end: '07:00' },
   },
-  report: { enabled: true, hour: DEFAULTS.REPORT_HOUR },
+  report: { enabled: true, hour: DEFAULTS.REPORT_HOUR, weekly: true },
   dingtalk: {
     appKey: '',
     appSecret: '',

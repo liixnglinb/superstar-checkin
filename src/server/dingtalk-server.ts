@@ -4,7 +4,7 @@ import * as fs from 'fs'
 import YAML from 'yaml'
 import axios from 'axios'
 import { logger } from '../utils/logger'
-import { getProxyConfig } from '../providers/runtime-config'
+import { getProxyConfig, getProxy, setProxy } from '../providers/runtime-config'
 import { encryptPassword } from '../utils/crypto'
 import { getConsolePage, ConsoleStatus } from './console-ui'
 
@@ -43,6 +43,8 @@ export interface DingTalkServerOptions {
   refreshCourses?: () => Promise<{ ok: boolean; count: number; message: string }>
   /** 日志文件路径（软件内日志查看页用） */
   getLogFile?: () => string
+  /** 主账号 Cookie（网络诊断用） */
+  getPrimaryCookie?: () => string
 }
 
 /**
@@ -67,6 +69,7 @@ export class DingTalkServer {
   private sendTestNotify?: () => Promise<void>
   private refreshCourses?: () => Promise<{ ok: boolean; count: number; message: string }>
   private getLogFile?: () => string
+  private getPrimaryCookie?: () => string
 
   constructor(
     private port: number,
@@ -83,6 +86,7 @@ export class DingTalkServer {
     this.sendTestNotify = options.sendTestNotify
     this.refreshCourses = options.refreshCourses
     this.getLogFile = options.getLogFile
+    this.getPrimaryCookie = options.getPrimaryCookie
   }
 
   /**
@@ -291,6 +295,13 @@ export class DingTalkServer {
                 : ((existing.report || {}).hour || 22),
             }
           }
+          // 每周签到周报（每周日推送本周统计）
+          if (body.weeklyReport !== undefined) {
+            existing.report = {
+              ...(existing.report || {}),
+              weekly: !!body.weeklyReport,
+            }
+          }
           fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
           logger.info('运行设置已保存，重启后生效')
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
@@ -352,6 +363,157 @@ export class DingTalkServer {
           logger.error(`读取日志失败: ${e.message}`)
           res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
           res.end(JSON.stringify({ ok: false, message: `读取日志失败: ${e.message}` }))
+        }
+        return
+      }
+
+      // 日志导出（设置页「导出日志」：下载完整 app.log）
+      if (req.method === 'GET' && req.url === '/api/logs/export') {
+        try {
+          const file = this.getLogFile ? this.getLogFile() : ''
+          const content = file && fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '(暂无日志内容)'
+          res.writeHead(200, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Content-Disposition': 'attachment; filename="app.log"',
+          })
+          res.end(content)
+        } catch (e: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: '导出失败: ' + e.message }))
+        }
+        return
+      }
+
+      // 一键网络诊断：依次检测各关键接口连通性，失败给原因与建议
+      if (req.method === 'GET' && req.url === '/api/diag') {
+        try {
+          const cookie = this.getPrimaryCookie ? this.getPrimaryCookie() : ''
+          const proxyCfg = getProxyConfig()
+          const results: any[] = []
+          const probe = async (name: string, url: string) => {
+            const start = Date.now()
+            try {
+              const r = await axios.get(url, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', ...(cookie ? { Cookie: cookie } : {}) },
+                proxy: proxyCfg,
+                timeout: 8000,
+              })
+              results.push({ name, ok: true, ms: Date.now() - start, status: r.status, detail: '' })
+            } catch (e: any) {
+              const status = e.response?.status
+              const code = e.code || ''
+              let detail = ''
+              if (status) detail = 'HTTP ' + status + (status === 502 || status === 503 ? '（网关临时故障，重试即可）' : status === 401 ? '（未登录，需重新登录）' : '')
+              else if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') detail = '域名解析失败（DNS/网络不可达）'
+              else if (code === 'ETIMEDOUT' || code === 'ECONNABORTED') detail = '连接超时（网络慢或被限制，可配置代理）'
+              else if (code === 'ECONNREFUSED') detail = '连接被拒绝'
+              else if (code === 'ECONNRESET') detail = '连接被重置（可能被防火墙拦截）'
+              else detail = String(e.message || '未知错误').substring(0, 80)
+              results.push({ name, ok: false, ms: Date.now() - start, status: status || 0, detail })
+            }
+          }
+          await probe('公网出口', 'https://www.baidu.com')
+          await probe('学习通登录域', 'https://passport2-api.chaoxing.com/v11/loginregister')
+          await probe('课程列表接口', 'https://mooc1-api.chaoxing.com/mycourse/backclazzdata?view=json&rss=1&pageIndex=1&pageSize=5')
+          await probe('签到接口', 'https://mobilelearn.chaoxing.com/newsign/preSign')
+          await probe('IM 实时通道', 'https://im.chaoxing.com/webim/me')
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, cookie: !!cookie, proxy: getProxy() || '', results }))
+        } catch (e: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: '诊断失败: ' + e.message }))
+        }
+        return
+      }
+
+      // 代理配置：读取当前值
+      if (req.method === 'GET' && req.url === '/api/proxy') {
+        const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+        const existing = fs.existsSync(cfgFile) ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {} : {}
+        const pv = String(existing.proxy || '')
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify({ ok: true, proxy: pv, enabled: !!pv }))
+        return
+      }
+
+      // 代理配置：保存（写 config.yaml + 运行时立即生效，无需重启）
+      if (req.method === 'POST' && req.url === '/api/proxy') {
+        try {
+          const body = JSON.parse(await this.readBody(req))
+          const pv = String(body.proxy || '').trim()
+          const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+          const existing = fs.existsSync(cfgFile) ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {} : {}
+          existing.proxy = pv
+          fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
+          setProxy(pv)
+          logger.info('代理配置已保存并立即生效: ' + (pv || '(直连)'))
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, message: pv ? '代理已保存并立即生效' : '已切换为直连（不使用代理）' }))
+        } catch (e: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: '保存失败: ' + e.message }))
+        }
+        return
+      }
+
+      // 代理配置：测试连通性（不改变当前代理设置）
+      if (req.method === 'POST' && req.url === '/api/proxy/test') {
+        try {
+          const body = JSON.parse(await this.readBody(req))
+          const raw = String(body.proxy || '').trim()
+          let proxyCfg: any = false
+          if (raw) {
+            const u = new URL(raw.includes('://') ? raw : 'http://' + raw)
+            proxyCfg = { protocol: u.protocol.replace(':', ''), host: u.hostname, port: u.port ? Number(u.port) : 80 }
+          }
+          const start = Date.now()
+          const r = await axios.get('https://passport2-api.chaoxing.com/v11/loginregister', {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            proxy: proxyCfg,
+            timeout: 8000,
+          })
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, ms: Date.now() - start, status: r.status, message: '连接成功（' + (Date.now() - start) + 'ms）' }))
+        } catch (e: any) {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: '连接失败: ' + String(e.message || '未知错误').substring(0, 120) }))
+        }
+        return
+      }
+
+      // 签到日历：?month=YYYY-MM 返回当月每日签到统计（历史记录月历视图）
+      if (req.method === 'GET' && req.url?.startsWith('/api/calendar')) {
+        try {
+          const url = new URL(req.url, 'http://localhost:' + this.port)
+          const month = url.searchParams.get('month') || ''
+          const m = /^(\d{4})-(\d{2})$/.exec(month)
+          if (!m) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: false, message: 'month 格式应为 YYYY-MM' }))
+            return
+          }
+          const year = Number(m[1])
+          const mon = Number(m[2])
+          const rows = this.historyProvider ? this.historyProvider() : []
+          const okRe = /成功|✅|已签到/
+          const days: any = {}
+          for (const r of rows) {
+            const ts = r.timestamp || Date.parse(r.time || '') || 0
+            if (!ts) continue
+            const d = new Date(ts)
+            if (d.getFullYear() !== year || d.getMonth() + 1 !== mon) continue
+            const day = String(d.getDate())
+            const e = days[day] || { success: 0, fail: 0, items: [] }
+            if (okRe.test(r.message || r.result || '')) e.success++
+            else e.fail++
+            if (e.items.length < 20) e.items.push({ course: r.courseName || '未知课程', type: r.type || '普通', result: r.message || r.result || '', time: r.time || '' })
+            days[day] = e
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, days }))
+        } catch (e: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: '日历获取失败: ' + e.message }))
         }
         return
       }

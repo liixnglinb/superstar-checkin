@@ -19,6 +19,8 @@ export interface ConsoleStatus {
   watchCourses?: string[]
   /** 课程扫描健康：courseId -> 连续轮询失败次数（≥3 时 UI 显示"扫描异常"） */
   courseHealth?: Record<string, number>
+  /** 签到趋势（近 14 天逐日成功/失败） */
+  trend?: Array<{ date: string; success: number; fail: number }>
   courseStats?: Array<{ course: string; success: number; fail: number }>
   recent?: Array<{ time: string; courseName: string; type: string; result: string; accountName: string; timestamp?: number }>
   recordCount?: number
@@ -35,7 +37,7 @@ export interface ConsoleStatus {
   retryMaxAttempts?: number
   retryDelayMs?: number
   verifyEnabled?: boolean
-  report?: { enabled: boolean; hour: number }
+  report?: { enabled: boolean; hour: number; weekly?: boolean }
 }
 
 const ICONS = {
@@ -237,11 +239,18 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
         <input class="field-input" id="setReportHour" type="number" min="0" max="23" value="${(status.report && status.report.hour) || 22}" style="width:80px">
         <span class="field-hint">点推送当天签到总结（成功/失败/未成功课程）</span>
       </div>
+
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <label class="field-label" for="setVerify" style="width:104px">签到后二次核对</label>
         <button class="switch ${status.verifyEnabled === false ? '' : 'on'}" id="setVerify" type="button" role="switch"><span class="knob"></span></button>
         <span class="field-hint" style="line-height:1.5">提交成功后再次查询平台确认已签到，避免"显示成功实际没签上"（默认开启）</span>
       </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setWeeklyReport" style="width:104px">每周签到周报</label>
+        <button class="switch ${status.report?.weekly !== false ? 'on' : ''}" id="setWeeklyReport" type="button" role="switch"><span class="knob"></span></button>
+        <span class="field-hint" style="line-height:1.5">每周日推送本周签到统计与漏签课程名单</span>
+      </div>
+
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <label class="field-label" for="setAutoLaunch" style="width:104px">开机自启</label>
         <button class="switch" id="setAutoLaunch" type="button" role="switch"><span class="knob"></span></button>
@@ -478,6 +487,35 @@ tr:hover td{background:#FCFAF8}
 .content::-webkit-scrollbar-thumb{background:#DCD0C6;border-radius:5px;border:2px solid var(--canvas)}
 .content::-webkit-scrollbar-thumb:hover{background:#C8B8AC}
 ::selection{background:rgba(194,78,46,.15)}
+
+/* ===== 签到趋势 ===== */
+#trendChart svg{display:block;width:100%;max-height:180px}
+.trend-legend{display:flex;gap:14px;justify-content:flex-end;font-size:12px;color:var(--text-2);padding:2px 18px 12px}
+.trend-legend span{display:inline-flex;align-items:center;gap:5px}
+.trend-legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
+/* ===== 签到日历 ===== */
+.cal-week{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px}
+.cal-week span{text-align:center;font-size:11.5px;color:var(--text-3);font-weight:600;padding:4px 0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-cell{min-height:58px;border:1px solid var(--border);border-radius:9px;padding:6px;background:var(--surface);cursor:pointer;transition:border-color .12s ease,background .12s ease}
+.cal-cell:hover{border-color:var(--accent)}
+.cal-other{opacity:.35;cursor:default;background:var(--surface-2)}
+.cal-today{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.cal-sel{background:var(--accent-weak);border-color:var(--accent)}
+.cal-day-num{font-size:12.5px;font-weight:600;color:var(--text-2)}
+.cal-badges{display:flex;flex-direction:column;gap:3px;margin-top:5px}
+.cal-badges span{font-size:11px;font-weight:600;line-height:1.2}
+.cal-ok{color:var(--ok)}
+.cal-err{color:var(--err)}
+.cal-detail-item{display:flex;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;align-items:baseline}
+.cal-detail-item:last-child{border-bottom:none}
+/* ===== 网络诊断 ===== */
+.diag-item{display:flex;align-items:center;gap:12px;padding:10px 14px;font-size:13px;border-bottom:1px solid var(--border)}
+.diag-item:last-child{border-bottom:none}
+.diag-name{font-weight:600;width:112px;flex-shrink:0}
+.diag-ms{font-size:12px;color:var(--text-3);width:70px;text-align:right;flex-shrink:0}
+.diag-detail{font-size:12.5px;color:var(--text-2);line-height:1.5}
+
 </style>
 </head>
 <body>
@@ -524,6 +562,13 @@ tr:hover td{background:#FCFAF8}
       <!-- 总览 -->
       <section class="view active" data-view="overview">
         <div class="stat-grid">${statCards}</div>
+
+        <div class="section">
+          <div class="section-head"><span class="section-title">签到趋势</span><span class="section-more">近 14 天 · 成功 / 失败</span></div>
+          <div id="trendChart" style="padding:14px 18px 4px"><div class="cell-empty" style="padding:26px 0">加载中…</div></div>
+          <div class="trend-legend"><span><i style="background:#178A5B"></i>成功</span><span><i style="background:#D64545"></i>失败</span></div>
+        </div>
+
         <div class="section">
           <div class="section-head"><span class="section-title">最近活动</span><span class="section-more">自动签到 · 失败自动重试</span></div>
           <table>
@@ -563,6 +608,21 @@ tr:hover td{background:#FCFAF8}
 
       <!-- 历史 -->
       <section class="view" data-view="history">
+
+        <div class="section">
+          <div class="section-head"><span class="section-title">签到日历</span><span class="section-more" id="calTitle">—</span>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-ghost btn-sm" id="calPrev">‹ 上月</button>
+              <button class="btn btn-ghost btn-sm" id="calNext">下月 ›</button>
+            </div>
+          </div>
+          <div style="padding:14px 18px">
+            <div class="cal-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+            <div class="cal-grid" id="calGrid"></div>
+            <div id="calDetail" style="margin-top:14px"></div>
+          </div>
+        </div>
+
         <div class="section">
           <div class="section-head"><span class="section-title">签到记录</span><span class="section-more" id="historyCount"></span></div>
           <table>
@@ -583,6 +643,9 @@ tr:hover td{background:#FCFAF8}
           <div class="section-head"><span class="section-title">运行日志</span><span class="section-more" id="logFile">自动刷新 · 最近 200 行</span></div>
           <div class="log-box" id="logBox"><div class="log-empty">加载中…</div></div>
           <div class="section-foot">
+
+            <a class="btn btn-ghost" href="/api/logs/export" download="app.log">${ICONS.download}<span>导出日志</span></a>
+
             <button class="btn btn-ghost" id="logRefreshBtn">${ICONS.refresh}<span>刷新日志</span></button>
             <span class="cfg-msg" id="logMsg"></span>
           </div>
@@ -600,6 +663,25 @@ tr:hover td{background:#FCFAF8}
           <div class="section-head"><span class="section-title">账号管理</span><span class="section-more">支持多账号，全部账号都会自动签到</span></div>
           ${accountManageBox}
         </div>
+
+        <div class="section">
+          <div class="section-head"><span class="section-title">网络与代理</span><span class="section-more">代理保存后立即生效，无需重启</span></div>
+          <div style="padding:14px 18px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <label class="field-label" for="proxyInput" style="width:104px">HTTP 代理</label>
+              <input class="field-input" id="proxyInput" type="text" placeholder="http://127.0.0.1:7890（留空 = 直连）" style="width:250px" spellcheck="false">
+              <button class="btn btn-ghost" id="proxyTestBtn">测试连接</button>
+              <button class="btn btn-primary" id="proxySaveBtn">保存</button>
+              <span class="cfg-msg" id="proxyMsg"></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:12px">
+              <button class="btn btn-ghost" id="diagBtn">${ICONS.refresh}<span>一键网络诊断</span></button>
+              <span class="field-hint">依次检测公网 / 登录 / 课程 / 签到 / IM 通道，失败会给出原因与建议</span>
+            </div>
+            <div id="diagResult" style="display:none;border:1px solid var(--border);border-radius:10px;overflow:hidden"></div>
+          </div>
+        </div>
+
         <div class="section">
           <div class="section-head"><span class="section-title">支持的签到方式</span></div>
           <div class="feature-grid">
@@ -919,6 +1001,31 @@ tr:hover td{background:#FCFAF8}
           }).join('')
         : '<tr><td colspan="4" class="cell-empty">暂无统计数据（产生签到记录后显示）</td></tr>'
     }
+
+    // 签到趋势（近 14 天柱状图）
+    var tr=document.getElementById('trendChart')
+    if(tr){
+      var t=s.trend||[]
+      if(!t.some(function(d){return d.success||d.fail})){
+        tr.innerHTML='<div class="cell-empty" style="padding:24px 0">暂无签到数据，产生签到记录后自动生成趋势图</div>'
+      }else{
+        var max=1;t.forEach(function(d){if(d.success+d.fail>max)max=d.success+d.fail})
+        var W=820,H=150,PL=10,PR=10,PT=14,PB=26
+        var iw=W-PL-PR,ih=H-PT-PB
+        var n=t.length,step=iw/n,bw=Math.min(step*0.5,18),gap=Math.max(3,step*0.14)
+        var bars='',labels=''
+        t.forEach(function(d,i){
+          var x=PL+i*step+step/2
+          var sh=Math.round(d.success/max*ih),fh=Math.round(d.fail/max*ih)
+          var by=PT+ih
+          if(d.success)bars+='<rect x="'+(x-bw-gap/2)+'" y="'+(by-sh)+'" width="'+bw+'" height="'+sh+'" rx="2" fill="#178A5B"/>'
+          if(d.fail)bars+='<rect x="'+(x+gap/2)+'" y="'+(by-fh)+'" width="'+bw+'" height="'+fh+'" rx="2" fill="#D64545"/>'
+          if(i%2===0||i===n-1)labels+='<text x="'+x+'" y="'+(H-7)+'" text-anchor="middle" font-size="10" fill="#9A8B80">'+d.date+'</text>'
+        })
+        tr.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'+bars+labels+'</svg>'
+      }
+    }
+
   }
   function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
   function fmtTime(ts){if(!ts)return '—';var d=new Date(ts),n=new Date();var hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');if(d.toDateString()===n.toDateString())return '今天 '+hm;var y=new Date(n.getTime()-86400000);if(d.toDateString()===y.toDateString())return '昨天 '+hm;return (d.getMonth()+1)+'月'+d.getDate()+'日 '+hm}
@@ -1120,7 +1227,9 @@ tr:hover td{background:#FCFAF8}
     fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       pollInterval:poll,pollJitter:jitter,retryMaxAttempts:retry,retryDelayMs:retryDelay*1000,
       locationRadius:radius,desktop:desktop,quietEnabled:quietOn,quietStart:qs,quietEnd:qe,
-      reportEnabled:reportOn,reportHour:reportHour,verifyEnabled:verify
+
+      reportEnabled:reportOn,reportHour:reportHour,verifyEnabled:verify,weeklyReport:document.getElementById('setWeeklyReport').classList.contains('on')
+
     })})
       .then(function(r){return r.json()})
       .then(function(d){
@@ -1135,7 +1244,116 @@ tr:hover td{background:#FCFAF8}
     var el=document.getElementById(id)
     if(el)el.addEventListener('click',function(){el.classList.toggle('on')})
   }
-  bindSwitch('setDesktop');bindSwitch('setQuiet');bindSwitch('setReport');bindSwitch('setVerify')
+
+  bindSwitch('setDesktop');bindSwitch('setQuiet');bindSwitch('setReport');bindSwitch('setVerify');bindSwitch('setWeeklyReport')
+
+
+  // ===== 签到日历（月历视图） =====
+  var calState={y:0,m:0,sel:null,data:{}}
+  function calInit(){var n=new Date();calState.y=n.getFullYear();calState.m=n.getMonth()+1}
+  function renderCal(){
+    var y=calState.y,m=calState.m
+    var t=document.getElementById('calTitle')
+    if(t)t.textContent=y+' 年 '+m+' 月'
+    fetch('/api/calendar?month='+y+'-'+String(m).padStart(2,'0')).then(function(r){return r.json()}).then(function(d){
+      calState.data=d.days||{}
+      var first=new Date(y,m-1,1)
+      var startDay=(first.getDay()+6)%7
+      var dim=new Date(y,m,0).getDate()
+      var cells=''
+      for(var i=0;i<startDay;i++)cells+='<div class="cal-cell cal-other"></div>'
+      var today=new Date()
+      for(var day=1;day<=dim;day++){
+        var e=calState.data[String(day)]
+        var isToday=today.getFullYear()===y&&today.getMonth()+1===m&&today.getDate()===day
+        var cls='cal-cell'+(isToday?' cal-today':'')+(calState.sel===day?' cal-sel':'')
+        var body='<div class="cal-day-num">'+day+'</div>'
+        if(e&&(e.success||e.fail)){
+          body+='<div class="cal-badges">'
+          if(e.success)body+='<span class="cal-ok">'+e.success+' 成功</span>'
+          if(e.fail)body+='<span class="cal-err">'+e.fail+' 失败</span>'
+          body+='</div>'
+        }
+        cells+='<div class="'+cls+'" data-day="'+day+'">'+body+'</div>'
+      }
+      var grid=document.getElementById('calGrid')
+      if(grid)grid.innerHTML=cells
+      showCalDetail(calState.sel)
+    }).catch(function(){})
+  }
+  function showCalDetail(day){
+    var box=document.getElementById('calDetail')
+    if(!box)return
+    if(!day){box.innerHTML='';return}
+    var e=calState.data[String(day)]
+    if(!e||!e.items||!e.items.length){box.innerHTML='<div class="cell-empty" style="padding:14px 0">当天暂无签到记录，点击有记录的日期查看详情</div>';return}
+    var rows=e.items.map(function(it){
+      var ok=/成功|✅|已签到/.test(it.result)
+      return '<div class="cal-detail-item"><span class="cell-sub">'+esc(it.time||'')+'</span><span class="cell-main">'+esc(it.course)+'</span><span class="cell-sub">'+esc(typeText(it.type))+'</span><span class="pill '+(ok?'pill-ok':'pill-err')+'">'+(ok?'成功':'失败')+'</span></div>'
+    }).join('')
+    box.innerHTML='<div style="font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:6px">'+calState.y+' 年 '+calState.m+' 月 '+day+' 日 · 共 '+(e.success+e.fail)+' 次签到</div>'+rows
+  }
+  var calGridEl=document.getElementById('calGrid')
+  if(calGridEl)calGridEl.addEventListener('click',function(ev){
+    var cell=ev.target.closest('.cal-cell[data-day]')
+    if(!cell)return
+    var day=Number(cell.getAttribute('data-day'))
+    calState.sel=calState.sel===day?null:day
+    renderCal()
+  })
+  var calPrev=document.getElementById('calPrev'),calNext=document.getElementById('calNext')
+  if(calPrev)calPrev.addEventListener('click',function(){calState.m--;if(calState.m<1){calState.m=12;calState.y--}calState.sel=null;renderCal()})
+  if(calNext)calNext.addEventListener('click',function(){calState.m++;if(calState.m>12){calState.m=1;calState.y++}calState.sel=null;renderCal()})
+  calInit();renderCal()
+
+  // ===== 网络与代理 =====
+  var proxyInput=document.getElementById('proxyInput')
+  var proxyMsg=document.getElementById('proxyMsg')
+  if(proxyInput)fetch('/api/proxy').then(function(r){return r.json()}).then(function(d){proxyInput.value=d.proxy||''}).catch(function(){})
+  var proxySaveBtn=document.getElementById('proxySaveBtn')
+  if(proxySaveBtn)proxySaveBtn.addEventListener('click',function(){
+    proxySaveBtn.disabled=true;proxyMsg.textContent='保存中…';proxyMsg.style.color='#0E7C66'
+    fetch('/api/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({proxy:proxyInput.value.trim()})})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        proxyMsg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||'保存失败')
+        proxyMsg.style.color=d.ok?'#178A5B':'#B42318'
+        proxySaveBtn.disabled=false
+      })
+      .catch(function(){proxyMsg.textContent='❌ 保存失败';proxyMsg.style.color='#B42318';proxySaveBtn.disabled=false})
+  })
+  var proxyTestBtn=document.getElementById('proxyTestBtn')
+  if(proxyTestBtn)proxyTestBtn.addEventListener('click',function(){
+    proxyTestBtn.disabled=true;proxyMsg.textContent='测试中…';proxyMsg.style.color='#0E7C66'
+    fetch('/api/proxy/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({proxy:proxyInput.value.trim()})})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        proxyMsg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||'测试失败')
+        proxyMsg.style.color=d.ok?'#178A5B':'#B42318'
+        proxyTestBtn.disabled=false
+      })
+      .catch(function(){proxyMsg.textContent='❌ 测试失败';proxyMsg.style.color='#B42318';proxyTestBtn.disabled=false})
+  })
+  var diagBtn=document.getElementById('diagBtn'),diagResult=document.getElementById('diagResult')
+  if(diagBtn)diagBtn.addEventListener('click',function(){
+    diagBtn.disabled=true;diagBtn.textContent='诊断中…'
+    diagResult.style.display='block'
+    diagResult.innerHTML='<div class="cell-empty" style="padding:20px 0">正在逐项检测，约需 5~15 秒…</div>'
+    fetch('/api/diag').then(function(r){return r.json()}).then(function(d){
+      var head=''
+      if(d.cookie===false)head='<div class="diag-item"><span class="diag-name">提示</span><span class="diag-detail">未配置账号或 Cookie 为空，课程 / 签到接口检测结果仅供参考</span></div>'
+      if(d.proxy)head+='<div class="diag-item"><span class="diag-name">当前代理</span><span class="diag-detail cell-mono">'+esc(d.proxy)+'</span></div>'
+      var rows=(d.results||[]).map(function(r){
+        return '<div class="diag-item"><span class="diag-name">'+esc(r.name)+'</span><span class="pill '+(r.ok?'pill-ok':'pill-err')+'">'+(r.ok?'正常':'异常')+'</span><span class="diag-ms">'+(r.ms>0?r.ms+'ms':'')+'</span><span class="diag-detail">'+esc(r.detail)+'</span></div>'
+      }).join('')
+      diagResult.innerHTML=head+rows
+      diagBtn.disabled=false;diagBtn.textContent='一键网络诊断'
+    }).catch(function(){
+      diagResult.innerHTML='<div class="cell-empty" style="padding:20px 0">诊断失败，请稍后重试</div>'
+      diagBtn.disabled=false;diagBtn.textContent='一键网络诊断'
+    })
+  })
+
   // 测试通知
   var notifyTestBtn=document.getElementById('notifyTestBtn')
   if(notifyTestBtn)notifyTestBtn.addEventListener('click',function(){

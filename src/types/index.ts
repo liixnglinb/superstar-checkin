@@ -176,6 +176,8 @@ export interface AppConfig {
     enabled: boolean
     /** 推送小时（0~23），默认 22 */
     hour: number
+    /** 每周签到周报：每周日推送本周统计（默认开启） */
+    weekly?: boolean
   }
   dingtalk?: {
     appKey: string

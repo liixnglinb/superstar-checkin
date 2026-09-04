@@ -105,7 +105,8 @@ function refreshTrayStats() {
       try {
         const s = JSON.parse(body)
         const t = s.todayStats || { success: 0, fail: 0 }
-        rebuildTrayMenu(`今日已签 ${t.success} · 失败 ${t.fail}`)
+        const recent = (s.recent || []).slice(0, 5)
+        rebuildTrayMenu(`今日已签 ${t.success} · 失败 ${t.fail}`, recent)
       } catch (e) { /* 服务未就绪，保持旧文案 */ }
     })
   })
@@ -113,11 +114,21 @@ function refreshTrayStats() {
   req.setTimeout(3000, () => req.destroy())
 }
 
-function rebuildTrayMenu(todayLine) {
+function rebuildTrayMenu(todayLine, recent) {
   if (!tray) return
+  const recentItems = Array.isArray(recent) && recent.length
+    ? recent.map((r) => ({
+        label: `${r.courseName || '未知课程'}｜${/成功|✅|已签到/.test(r.result) ? '✓' : '✗'} ${r.result ? r.result.split('\n')[0].slice(0, 24) : ''} ${r.time || ''}`,
+        enabled: false,
+      }))
+    : [{ label: '暂无签到记录', enabled: false }]
   const menu = Menu.buildFromTemplate([
     { label: todayLine, enabled: false },
     { label: '打开控制台', click: () => openWindow() },
+    { type: 'separator' },
+    { label: '最近签到', enabled: false },
+    ...recentItems,
+    { label: '刷新统计', click: () => refreshTrayStats() },
     { type: 'separator' },
     {
       label: '退出',

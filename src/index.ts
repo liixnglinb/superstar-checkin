@@ -86,7 +86,7 @@ async function main() {
       const successCount = history.filter((r: any) => okRe.test(r.message || r.result)).length
       // 课程签到统计（每门课成功/失败次数，供课程页展示）
       const statsMap = new Map<string, { success: number; fail: number }>()
-      for (const r of history) {
+      for (const r of history as any[]) {
         const k = r.courseName || '未知课程'
         const e = statsMap.get(k) || { success: 0, fail: 0 }
         if (okRe.test((r as any).message || (r as any).result)) e.success++
@@ -98,6 +98,26 @@ async function main() {
         success: s.success,
         fail: s.fail,
       }))
+      // 签到趋势（近 14 天逐日成功/失败，供总览页图表）
+      const trend: Array<{ date: string; success: number; fail: number }> = []
+      const dayMap = new Map<string, { success: number; fail: number }>()
+      for (const r of history as any[]) {
+        const ts = r.timestamp || 0
+        if (!ts) continue
+        const d = new Date(ts)
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        const e = dayMap.get(key) || { success: 0, fail: 0 }
+        if (okRe.test(r.result)) e.success++
+        else e.fail++
+        dayMap.set(key, e)
+      }
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date()
+        d.setDate(d.getDate() - i)
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        const e = dayMap.get(key) || { success: 0, fail: 0 }
+        trend.push({ date: key.slice(5), success: e.success, fail: e.fail })
+      }
       // 补全前端需要展示的字段（result/timestamp/accountName）
       const recent = history.slice(0, 10).map((r: any) => ({
         time: r.time || '',
@@ -124,6 +144,7 @@ async function main() {
         watchCourses: config.watchCourses || [],
         courseHealth: Object.fromEntries(courseHealth),
         courseStats,
+        trend,
         recent,
         recordCount: history.length,
         successCount,
@@ -190,6 +211,7 @@ async function main() {
         notifier.notify('✅ 测试通知', '通知通道工作正常\n（免打扰时段内桌面通知不会弹出）').catch(() => {}),
       refreshCourses,
       getLogFile: () => config.log.file || '',
+      getPrimaryCookie: () => primaryMeta.cookie || '',
     })
     dtServer.start()
     logger.info(`上传页服务已启动: http://0.0.0.0:${dtPort}`)
@@ -480,6 +502,69 @@ async function main() {
       logger.error(`日报发送失败: ${e.message}`)
     }
   }
+
+  // 9.55b 每周签到周报：每周日推送本周签到统计（成功率 + 漏签课程名单）
+  async function sendWeeklyReport() {
+    try {
+      const history = checkinHandler.getHistory()
+      const now = new Date()
+      // 本周一 0 点
+      const weekStart = new Date(now)
+      const dow = (now.getDay() + 6) % 7 // 周一=0
+      weekStart.setDate(now.getDate() - dow)
+      weekStart.setHours(0, 0, 0, 0)
+      const okRe2 = /成功|✅|已签到/
+      const week = history.filter((r: any) => (r.timestamp || 0) >= weekStart.getTime())
+      if (week.length === 0) {
+        logger.info('周报：本周还没有签到记录')
+        await notifier.notify('📈 本周签到周报', `本周（${weekStart.getMonth() + 1}月${weekStart.getDate()}日起）还没有签到记录\n一切正常时表示本周暂无签到活动`)
+        return
+      }
+      const okCount = week.filter((r: any) => okRe2.test(r.result)).length
+      // 本周有签到记录的课程里，按课程统计
+      const perCourse = new Map<string, { ok: number; fail: number }>()
+      for (const r of week as any[]) {
+        const k = r.courseName || '未知课程'
+        const e = perCourse.get(k) || { ok: 0, fail: 0 }
+        if (okRe2.test(r.result)) e.ok++
+        else e.fail++
+        perCourse.set(k, e)
+      }
+      const rate = Math.round((okCount / week.length) * 100)
+      let content = `本周共处理 ${week.length} 次签到，成功 ${okCount} 次（${rate}%）`
+      const missCourses = Array.from(perCourse.entries())
+        .filter(([, e]) => e.fail > 0)
+        .map(([name, e]) => `· ${name}（失败 ${e.fail} 次）`)
+      if (missCourses.length > 0) {
+        content += `\n\n需要留意：\n${missCourses.slice(0, 8).join('\n')}`
+      } else {
+        content += '\n全部成功 🎉'
+      }
+      await notifier.notify('📈 本周签到周报', content)
+      logger.success('本周签到周报已推送')
+    } catch (e: any) {
+      logger.error(`周报发送失败: ${e.message}`)
+    }
+  }
+
+  function scheduleWeeklyReport() {
+    const now = new Date()
+    const hour = Math.max(0, Math.min(23, config.report?.hour ?? DEFAULTS.REPORT_HOUR))
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0, 0, 0)
+    // 下一个周日（getDay()===0）的 hour 点
+    const daysToSunday = (7 - now.getDay()) % 7
+    next.setDate(next.getDate() + daysToSunday)
+    if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 7)
+    const delay = next.getTime() - now.getTime()
+    setTimeout(() => {
+      if (config.report?.weekly !== false) {
+        sendWeeklyReport().catch(() => {})
+      }
+      scheduleWeeklyReport()
+    }, delay)
+    logger.info(`每周签到周报已启用（每周日 ${hour}:00 推送，当前${config.report?.weekly === false ? '关闭' : '开启'}）`)
+  }
+  if (config.report?.weekly !== false) scheduleWeeklyReport()
 
   function scheduleDailyReport() {
     const now = new Date()
