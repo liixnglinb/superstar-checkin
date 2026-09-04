@@ -32,6 +32,7 @@ export interface ConsoleStatus {
   locationRadius?: number
   retryMaxAttempts?: number
   retryDelayMs?: number
+  verifyEnabled?: boolean
   report?: { enabled: boolean; hour: number }
 }
 
@@ -226,6 +227,11 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
         <button class="switch ${status.report && status.report.enabled !== false ? 'on' : ''}" id="setReport" type="button" role="switch"><span class="knob"></span></button>
         <input class="field-input" id="setReportHour" type="number" min="0" max="23" value="${(status.report && status.report.hour) || 22}" style="width:80px">
         <span class="field-hint">点推送当天签到总结（成功/失败/未成功课程）</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setVerify" style="width:110px">签到后二次核对</label>
+        <button class="switch ${status.verifyEnabled === false ? '' : 'on'}" id="setVerify" type="button" role="switch"><span class="knob"></span></button>
+        <span class="field-hint" style="line-height:1.5">提交成功后再次查询平台确认已签到，避免"显示成功实际没签上"（默认开启）</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <label class="field-label" for="setAutoLaunch" style="width:110px">开机自启</label>
@@ -974,12 +980,13 @@ tr:hover td{background:#FCFAF8}
     var qe=document.getElementById('setQuietEnd').value
     var reportOn=document.getElementById('setReport').classList.contains('on')
     var reportHour=document.getElementById('setReportHour').value
+    var verify=document.getElementById('setVerify').classList.contains('on')
     var msg=document.getElementById('settingsMsg')
     settingsSaveBtn.disabled=true;settingsSaveBtn.textContent='保存中…'
     fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       pollInterval:poll,pollJitter:jitter,retryMaxAttempts:retry,retryDelayMs:retryDelay*1000,
       locationRadius:radius,desktop:desktop,quietEnabled:quietOn,quietStart:qs,quietEnd:qe,
-      reportEnabled:reportOn,reportHour:reportHour
+      reportEnabled:reportOn,reportHour:reportHour,verifyEnabled:verify
     })})
       .then(function(r){return r.json()})
       .then(function(d){
@@ -994,7 +1001,7 @@ tr:hover td{background:#FCFAF8}
     var el=document.getElementById(id)
     if(el)el.addEventListener('click',function(){el.classList.toggle('on')})
   }
-  bindSwitch('setDesktop');bindSwitch('setQuiet');bindSwitch('setReport')
+  bindSwitch('setDesktop');bindSwitch('setQuiet');bindSwitch('setReport');bindSwitch('setVerify')
   // 测试通知
   var notifyTestBtn=document.getElementById('notifyTestBtn')
   if(notifyTestBtn)notifyTestBtn.addEventListener('click',function(){

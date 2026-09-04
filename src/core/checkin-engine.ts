@@ -35,6 +35,40 @@ export class CheckinEngine {
     return CheckinEngine.useragentRotation ? getRandomMobileUA() : MOBILE_AGENT
   }
   /**
+   * 签到后二次核对：提交成功后再次查询活动详情，确认该账号已真正签到。
+   * 防御式解析常见状态字段（signState / stuSignState / ifSign / isSign / isSignIn）。
+   * @returns checked=false 表示接口未返回可判定字段或请求失败（如实标注，不冒充确认成功）
+   */
+  static async verifyCheckin(cookie: string, activeId: string | number): Promise<{ signed: boolean; checked: boolean; field?: string }> {
+    try {
+      const res = await axios.get(API.CHECKIN_DETAIL, {
+        headers: { Cookie: cookie, 'User-Agent': this.mobileUA() },
+        params: { activeId },
+        proxy: getProxyConfig(),
+      })
+      if (res.data.result !== 1) {
+        logger.warn(`二次核对失败: 活动详情接口返回异常 activeId=${activeId}`)
+        return { signed: false, checked: false }
+      }
+      const d = res.data.data || {}
+      const keys = ['signState', 'stuSignState', 'ifSign', 'isSign', 'isSignIn']
+      for (const k of keys) {
+        const v = d[k]
+        if (v !== undefined && v !== null) {
+          const signed = v === 1 || v === true || v === '1' || v === 'true'
+          return { signed, checked: true, field: k }
+        }
+      }
+      // 接口未返回任何状态字段：无法确认（老接口/接口变更），如实标注
+      logger.info(`二次核对: 接口未返回状态字段，无法确认 activeId=${activeId}`)
+      return { signed: false, checked: false }
+    } catch (e: any) {
+      logger.warn(`二次核对请求失败: ${e.message}`)
+      return { signed: false, checked: false }
+    }
+  }
+
+  /**
    * 获取签到活动详情
    */
   static async getDetail(cookie: string, activeId: string | number): Promise<CheckinInfo> {

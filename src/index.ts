@@ -137,6 +137,7 @@ async function main() {
         locationRadius: config.geo.locationRadius || 10,
         retryMaxAttempts: config.checkin.retry.maxAttempts,
         retryDelayMs: config.checkin.retry.delayMs,
+        verifyEnabled: config.checkin.verify?.enabled !== false,
         report: config.report,
       }
     } catch (e) {

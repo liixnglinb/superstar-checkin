@@ -140,6 +140,8 @@ export interface AppConfig {
   checkin: {
     delay: { min: number; max: number }
     retry: { maxAttempts: number; delayMs: number }
+    /** 签到后二次核对：提交成功后查询平台确认已签到（默认开启） */
+    verify?: { enabled: boolean }
     antiDetect: {
       enabled: boolean
       randomDelay: boolean

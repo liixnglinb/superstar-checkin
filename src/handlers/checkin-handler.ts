@@ -18,12 +18,50 @@ export class CheckinHandler {
   private config: AppConfig
   private accountManager: AccountManager
   private history: CheckinResult[] = []
+  /** 签到后二次核对开关（默认开启） */
+  private verifyEnabled: boolean
 
   constructor(config: AppConfig, accountManager: AccountManager) {
     this.config = config
     this.accountManager = accountManager
+    this.verifyEnabled = config.checkin.verify?.enabled !== false
     // 根据配置启用 UA 轮换（防检测增强）
     CheckinEngine.useragentRotation = config.checkin.antiDetect.useragentRotation
+  }
+
+  /**
+   * 二次核对：提交成功后再次查询平台，确认账号已真正签到。
+   * 核对失败会补交一次；补交仍无法确认时如实标注（不冒充成功，也不把提交结果谎报为失败）。
+   */
+  private async verifyAfterCheckin(
+    meta: AccountMetaData,
+    aid: string,
+    courseId: number,
+    classId: number,
+    info: CheckinInfo,
+    enc: string,
+    result: string,
+  ): Promise<string> {
+    if (!this.verifyEnabled) return result
+    try {
+      const v = await CheckinEngine.verifyCheckin(meta.cookie, aid)
+      if (!v.checked) return result + ' [已提交，核对暂不可用]'
+      if (v.signed) return result + ' [已核对✓]'
+      // 提交返回成功但平台显示未签到：补交一次再核对
+      logger.warn(`${meta.name}: 提交成功但核对未通过，自动补交一次`)
+      await randomDelay(2, 5)
+      const retried = info.type === 'qr'
+        ? await CheckinEngine.qrCheckin(meta, aid, enc)
+        : await this.executeCheckin(meta, aid, courseId, classId, info)
+      if (isSuccessMessage(retried)) {
+        const v2 = await CheckinEngine.verifyCheckin(meta.cookie, aid)
+        if (v2.checked && v2.signed) return result + ' [补交后已核对✓]'
+      }
+      return result + ' [⚠ 提交成功但平台未确认已签到，请手动检查]'
+    } catch (e: any) {
+      logger.warn(`${meta.name} 二次核对异常: ${e.message}`)
+      return result + ' [核对失败]'
+    }
   }
 
   /**
@@ -60,11 +98,13 @@ export class CheckinHandler {
           },
         )
 
+        const verifiedMsg = await this.verifyAfterCheckin(meta, aid, courseId, classId, checkinInfo, '', result)
+
         const cr: CheckinResult = {
           account: account.username,
           accountName: meta.name,
           success: isSuccessMessage(result),
-          message: result,
+          message: verifiedMsg,
           type: checkinInfo.type,
           courseName,
           aid,
@@ -133,11 +173,12 @@ export class CheckinHandler {
       const meta = this.accountManager.getMeta(account.username)
       try {
         const result = await CheckinEngine.qrCheckin(meta, aid, enc)
+        const finalMsg = await this.verifyAfterCheckin(meta, aid, 0, 0, { type: 'qr' } as CheckinInfo, enc, result)
         results.push({
           account: account.username,
           accountName: meta.name,
           success: isSuccessMessage(result),
-          message: result,
+          message: finalMsg,
           type: 'qr',
           aid,
           timestamp: Date.now(),

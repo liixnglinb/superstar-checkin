@@ -30,6 +30,7 @@ const DEFAULT_CONFIG: Partial<AppConfig> = {
       useragentRotation: false,
       gpsDrift: true,
     },
+    verify: { enabled: DEFAULTS.VERIFY_ENABLED },
   },
   geo: {
     locations: [],

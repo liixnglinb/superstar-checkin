@@ -45,6 +45,7 @@ export const DEFAULTS = {
   GEO_RADIUS: 10,             // 位置签到：在教师坐标 10 米范围内生成签到点
   REPORT_HOUR: 22,            // 每日签到日报推送小时
   TRIANGULATE_RADIUS: 50,     // 三角定位目标半径（米）
+  VERIFY_ENABLED: true,         // 签到后二次核对：提交成功后查询平台确认已签到
   MAX_HISTORY: 500,           // 签到历史最大条数
   MAX_LEARNED_LOC: 50,        // 已学坐标最大条数
 } as const

@@ -278,6 +278,10 @@ export class DingTalkServer {
               existing.geo = { ...(existing.geo || {}), locationRadius: Math.round(r) }
             }
           }
+          // 签到后二次核对（提交成功后查询平台确认已签到）
+          if (body.verifyEnabled !== undefined) {
+            existing.checkin = { ...(existing.checkin || {}), verify: { enabled: !!body.verifyEnabled } }
+          }
           // 每日签到日报
           if (body.reportEnabled !== undefined || body.reportHour !== undefined) {
             existing.report = {
