@@ -18,7 +18,7 @@ export interface DingTalkMessage {
   msgId?: string
 }
 
-type ImageHandler = (imageBuffer: Buffer, type?: 'qr' | 'photo') => Promise<void>
+type ImageHandler = (imageBuffer: Buffer) => Promise<void>
 
 /** 控制台首页数据提供者（每次请求时实时获取） */
 export type StatusProvider = () => Record<string, any>
@@ -169,12 +169,10 @@ export class DingTalkServer {
         return
       }
 
-      // 上传页面（手机端，支持 ?type=qr|photo 区分二维码/拍照）
+      // 上传页面（手机端，二维码签到上传；?type=photo 已随拍照签到一并移除）
       if (req.method === 'GET' && req.url?.startsWith('/upload')) {
-        const url = new URL(req.url, `http://localhost:${this.port}`)
-        const type: 'qr' | 'photo' = url.searchParams.get('type') === 'photo' ? 'photo' : 'qr'
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-        res.end(this.getUploadPage(type))
+        res.end(this.getUploadPage())
         return
       }
 
@@ -199,11 +197,8 @@ export class DingTalkServer {
           const buffer = Buffer.concat(chunks)
 
           if (this.imageHandler && buffer.length > 0) {
-            // 透传上传页声明的图片类型（?type=qr|photo），便于上层正确路由
-            const url = new URL(req.url, `http://localhost:${this.port}`)
-            const t = url.searchParams.get('type')
-            const type: 'qr' | 'photo' | undefined = t === 'photo' ? 'photo' : t === 'qr' ? 'qr' : undefined
-            await this.imageHandler(buffer, type)
+            // 所有上传统一按二维码签到处理（拍照签到已移除）
+            await this.imageHandler(buffer)
           }
 
           res.writeHead(200, { 'Content-Type': 'application/json' })
@@ -292,17 +287,13 @@ export class DingTalkServer {
   }
 
   /**
-   * 手机端上传页面（自动携带 token）
-   * @param type 'qr' 二维码签到上传 / 'photo' 拍照签到上传
+   * 手机端上传页面（二维码签到专用，自动携带 token）
    */
-  private getUploadPage(type: 'qr' | 'photo' = 'qr'): string {
+  private getUploadPage(): string {
     const token = this.token || ''
-    const isPhoto = type === 'photo'
-    const title = isPhoto ? '学习通签到 - 拍照上传' : '学习通签到 - 二维码上传'
-    const tip = isPhoto
-      ? '拍一张照片（或选择相册图片）上传，用于拍照签到'
-      : '拍一张教室里的签到二维码，点击上传'
-    const placeholder = isPhoto ? '📷 点击拍照或选择照片' : '📷 点击拍照或选择图片'
+    const title = '学习通签到 - 二维码上传'
+    const tip = '拍一张教室里的签到二维码，点击上传（软件会自动识别并完成签到）'
+    const placeholder = '📷 点击拍照或选择图片'
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>

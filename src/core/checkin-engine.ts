@@ -63,7 +63,8 @@ export class CheckinEngine {
 
     const result: CheckinInfo = { type }
 
-    if (type === 'location' && d.ifopenAddress) {
+    // 位置签到：直接取活动携带的教师发布坐标（不依赖"显示地址"开关，坐标存在即用）
+    if (type === 'location' && d.locationLatitude && d.locationLongitude) {
       result.location = {
         address: d.locationText || '',
         lat: d.locationLatitude,
@@ -208,65 +209,7 @@ export class CheckinEngine {
   }
 
   /**
-   * 拍照签到：上传用户照片到超星云盘后提交
-   */
-  static async photoCheckin(
-    account: AccountMetaData,
-    activeId: string,
-    photoPath: string,
-    extra?: { courseId?: number | string; classId?: number | string },
-  ): Promise<string> {
-    const jar = new CookieJar()
-    const client = wrapper(axios.create({ jar, proxy: getProxyConfig() }))
-
-    await this.preSign(client, account.cookie, { activeId, uid: account.uid }, extra)
-    const objectId = await this.uploadPhoto(account, photoPath)
-    return this.submitSign(client, account.cookie, {
-      name: account.name,
-      activeId,
-      uid: account.uid,
-      objectId,
-    })
-  }
-
-  /**
-   * 上传照片到超星云盘，返回可用于提交的 objectId
-   * 流程：pan-yz token/uservalid 拿 token → pan-yz/upload 传图
-   */
-  static async uploadPhoto(account: AccountMetaData, filePath: string): Promise<string> {
-    // 1. 获取网盘 token
-    const tokenResp = await axios.get(API.PHOTO_TOKEN, {
-      headers: { Cookie: account.cookie, 'User-Agent': this.mobileUA() },
-      proxy: getProxyConfig(),
-    })
-    const tokenJson = parseJsonSafe(tokenResp.data)
-    const token: string | undefined = tokenJson?.token
-    if (!token) throw new Error('获取网盘 token 失败: ' + JSON.stringify(tokenResp.data))
-
-    // 2. 上传图片（multipart/form-data）
-    const buf = fs.readFileSync(filePath)
-    const form = new FormData()
-    form.append('puid', String(account.uid))
-    form.append('_token', token)
-    form.append('file', new Blob([buf], { type: 'image/jpeg' }), path.basename(filePath))
-
-    const upResp = await axios.post(API.PHOTO_UPLOAD, form, {
-      headers: {
-        Cookie: account.cookie,
-        'User-Agent': this.mobileUA(),
-        Referer: 'https://pan-yz.chaoxing.com/',
-      },
-      proxy: getProxyConfig(),
-    })
-
-    const upJson = parseJsonSafe(upResp.data)
-    const objectId: string | undefined = upJson?.objectId ?? (typeof upResp.data === 'string' ? upResp.data : undefined)
-    if (!objectId) throw new Error('上传图片未返回 objectId: ' + JSON.stringify(upResp.data))
-    return objectId
-  }
-
-  /**
-   * 位置签到（含 GPS 漂移 + 三角定位）
+   * 位置签到：取教师发布坐标，在 10 米范围内生成签到点（GPS 漂移）；不在范围时三角定位逼近
    */
   static async geoCheckin(
     account: AccountMetaData,
@@ -316,8 +259,8 @@ export class CheckinEngine {
       })) + '\n[警告: 无坐标，降级为普通签到]'
     }
 
-    // 带 GPS 漂移的首次签到
-    const drifted = addGpsDrift(lat, lon)
+    // 带 GPS 漂移的首次签到：在教师坐标 10 米范围内生成签到点
+    const drifted = addGpsDrift(lat, lon, DEFAULTS.GEO_RADIUS)
     const firstResult = await this.submitSign(client, account.cookie, {
       name: account.name, address: apiAddress, activeId, uid: account.uid,
       latitude: drifted.lat, longitude: drifted.lon,
@@ -329,7 +272,7 @@ export class CheckinEngine {
       const learned = getLearnedLocation(apiAddress)
       if (learned) {
         logger.info(`尝试已学坐标: (${learned.lat}, ${learned.lon})`)
-        const ld = addGpsDrift(learned.lat, learned.lon)
+        const ld = addGpsDrift(learned.lat, learned.lon, DEFAULTS.GEO_RADIUS)
         const lr = await this.submitSign(client, account.cookie, {
           name: account.name, address: apiAddress, activeId, uid: account.uid,
           latitude: ld.lat, longitude: ld.lon,

@@ -13,10 +13,17 @@ import { decodeImage } from './image-decode'
 // 用变量形式 require，避免打包器把它静态收集进产物（原生二进制无法内联）。
 const SHARP_MOD = 'sharp'
 
+export interface QrPayload {
+  /** 二维码内容中携带的活动编号（部分签到码包含；不含时需配合待处理签到使用） */
+  aid?: string
+  /** 签到会话密钥 enc（必含） */
+  enc: string
+}
+
 export async function decodeQrFromBuffer(
   buffer: Buffer,
   ocrConfig?: { provider: string; tencent?: { secretId: string; secretKey: string } },
-): Promise<string | null> {
+): Promise<QrPayload | null> {
   // 方式1：腾讯云 OCR（显式配置时优先）
   if (ocrConfig?.provider === 'tencent' && ocrConfig.tencent) {
     return decodeViaTencentOcr(buffer, ocrConfig.tencent)
@@ -33,7 +40,7 @@ export async function decodeQrFromBuffer(
 async function decodeViaTencentOcr(
   buffer: Buffer,
   credentials: { secretId: string; secretKey: string },
-): Promise<string | null> {
+): Promise<QrPayload | null> {
   try {
     const base64 = buffer.toString('base64')
     const timestamp = Math.floor(Date.now() / 1000)
@@ -89,15 +96,15 @@ async function decodeViaTencentOcr(
       const match = url.match(QR_REGEX) || url.match(/enc=([\dA-Fa-f]+)/)
       if (match) {
         const enc = match[5] || match[1]
-        logger.info(`腾讯云 OCR 解析成功: enc=${enc}`)
-        return enc
+        logger.info(`腾讯云 OCR 解析成功: enc=${enc} aid=${match[3] || '无'}`)
+        return { aid: match[3] || undefined, enc }
       }
       // 也检查原始文本内容
       const text = JSON.stringify(item)
       const textMatch = text.match(/enc=([\dA-Fa-f]+)/)
       if (textMatch) {
         logger.info(`腾讯云 OCR 解析成功(文本): enc=${textMatch[1]}`)
-        return textMatch[1]
+        return { aid: undefined, enc: textMatch[1] }
       }
     }
 
@@ -109,18 +116,20 @@ async function decodeViaTencentOcr(
   }
 }
 
-/** 提取 jsQR 解码文本中的 enc 参数 */
-function extractEnc(text: string): string | null {
+/** 提取 jsQR 解码文本中的 aid + enc 参数 */
+function extractPayload(text: string): { aid?: string; enc: string } | null {
   const match = text.match(QR_REGEX) || text.match(/enc=([\dA-Fa-f]+)/)
   if (!match) return null
-  return match[5] || match[1] || null
+  const enc = match[5] || match[1]
+  if (!enc) return null
+  return { aid: match[3] || undefined, enc }
 }
 
 /**
  * 本地 jsQR 解码：默认纯 JS 图片解码（pngjs/jpeg-js/BMP 手动解析）+ jsqr，
  * 不依赖 sharp 原生模块；若环境已安装 sharp 则优先使用（解码更快、格式更全）。
  */
-async function decodeViaJsQR(buffer: Buffer): Promise<string | null> {
+async function decodeViaJsQR(buffer: Buffer): Promise<QrPayload | null> {
   // jsqr 为纯 JS，可随打包产物内联
   const jsQR = require('jsqr')
 
@@ -159,8 +168,8 @@ async function decodeViaJsQR(buffer: Buffer): Promise<string | null> {
 
     if (code?.data) {
       logger.info(`jsQR 解析结果: ${code.data.slice(0, 100)}`)
-      const enc = extractEnc(code.data)
-      if (enc) return enc
+      const payload = extractPayload(code.data)
+      if (payload) return payload
     }
 
     logger.warn('jsQR 未识别到二维码内容')

@@ -20,8 +20,11 @@ export function randomDelayMs(minMs: number, maxMs: number): Promise<void> {
 /**
  * GPS 漂移：在目标坐标附近 5~30 米随机偏移，模拟手机 GPS 误差
  */
-export function addGpsDrift(lat: number, lon: number): { lat: number; lon: number } {
-  const meters = DEFAULTS.GPS_DRIFT_MIN + Math.random() * (DEFAULTS.GPS_DRIFT_MAX - DEFAULTS.GPS_DRIFT_MIN)
+export function addGpsDrift(lat: number, lon: number, radius?: number): { lat: number; lon: number } {
+  // 指定 radius 时在 1~radius 米内随机偏移（位置签到用 10 米）；未指定时沿用默认 5~30 米
+  const meters = radius
+    ? 1 + Math.random() * (radius - 1)
+    : DEFAULTS.GPS_DRIFT_MIN + Math.random() * (DEFAULTS.GPS_DRIFT_MAX - DEFAULTS.GPS_DRIFT_MIN)
   const angle = Math.random() * 2 * Math.PI
   const dLat = meters * Math.cos(angle) / 111320
   const dLon = meters * Math.sin(angle) / (111320 * Math.cos(lat * Math.PI / 180))

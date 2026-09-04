@@ -111,16 +111,8 @@ export class CheckinHandler {
           this.config.geo.providers,
         )
 
-      case 'gesture':
-        // 手势签到需要滑动轨迹参数，无法自动完成。
-        // 直接抛明确错误，避免做一次必失败的降级提交浪费请求。
-        throw new Error('手势签到需要滑动轨迹，无法自动完成，请手动签到')
-
       case 'qr':
-        throw new Error('二维码签到需要提供 enc 参数，请通过 QQ/文件夹/API 提交')
-
-      case 'photo':
-        throw new Error('拍照签到需要提供照片，请通过上传链接提交')
+        throw new Error('二维码签到需要提供 enc 参数，请拖拽/上传二维码图片提交')
 
       case 'normal':
       default:
@@ -153,47 +145,6 @@ export class CheckinHandler {
           success: false,
           message: e.message,
           type: 'qr',
-          aid,
-        })
-      }
-    }
-
-    return results
-  }
-
-  /**
-   * 处理拍照签到
-   */
-  async handlePhoto(
-    aid: string,
-    photoPath: string,
-    info: { courseName: string; courseId: number; classId: number },
-  ): Promise<CheckinResult[]> {
-    const results: CheckinResult[] = []
-
-    for (const account of this.accountManager.getAccounts()) {
-      const meta = this.accountManager.getMeta(account.username)
-      try {
-        const result = await CheckinEngine.photoCheckin(
-          meta, aid, photoPath, { courseId: info.courseId, classId: info.classId },
-        )
-        results.push({
-          account: account.username,
-          accountName: meta.name,
-          success: isSuccessMessage(result),
-          message: result,
-          type: 'photo',
-          courseName: info.courseName,
-          aid,
-        })
-      } catch (e: any) {
-        results.push({
-          account: account.username,
-          accountName: meta.name,
-          success: false,
-          message: e.message,
-          type: 'photo',
-          courseName: info.courseName,
           aid,
         })
       }

@@ -69,6 +69,10 @@ function openWindow() {
     },
   })
   mainWindow.loadURL(CONSOLE_URL)
+  // 安全防护：阻止页面导航离开本机控制台（含拖拽文件误触发的跳转）
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    if (!url.startsWith('http://127.0.0.1:3456')) e.preventDefault()
+  })
   mainWindow.on('close', (e) => {
     // 关闭窗口 = 最小化到托盘（后台继续签到监控）
     if (!quitting) {

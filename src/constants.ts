@@ -41,6 +41,7 @@ export const DEFAULTS = {
   RETRY_DELAY: 5000,          // 重试间隔（毫秒）
   GPS_DRIFT_MIN: 5,           // GPS 漂移下限（米）
   GPS_DRIFT_MAX: 30,          // GPS 漂移上限（米）
+  GEO_RADIUS: 10,             // 位置签到：在教师坐标 10 米范围内生成签到点
   TRIANGULATE_RADIUS: 50,     // 三角定位目标半径（米）
   MAX_HISTORY: 500,           // 签到历史最大条数
   MAX_LEARNED_LOC: 50,        // 已学坐标最大条数

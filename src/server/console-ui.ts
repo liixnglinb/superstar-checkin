@@ -23,7 +23,6 @@ export interface ConsoleStatus {
   cookieValid?: boolean
   imConnected?: boolean
   qrPending?: boolean
-  photoPending?: boolean
 }
 
 const ICONS = {
@@ -223,6 +222,10 @@ body{font-family:var(--font);background:var(--canvas);color:var(--text);font-siz
 .field-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(14,124,102,.12)}
 .field-hint{font-size:12px;color:var(--text-3);line-height:1.7;margin:0}
 .cfg-msg{font-size:12.5px;font-weight:600}
+.drag-mask{position:fixed;inset:0;z-index:999;display:none;align-items:center;justify-content:center;background:rgba(14,124,102,.08);pointer-events:none}
+.drag-mask.show{display:flex}
+.drag-box{border:2px dashed var(--accent);border-radius:16px;background:var(--surface);padding:36px 60px;text-align:center;color:var(--accent);font-size:15px;font-weight:600;box-shadow:0 8px 32px rgba(0,0,0,.12)}
+.drag-box small{display:block;margin-top:6px;font-size:12px;font-weight:400;color:var(--text-2)}
 /* ===== 表格 ===== */
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th{text-align:left;padding:10px 18px;font-size:12px;font-weight:600;color:var(--text-2);border-bottom:1px solid var(--border);background:var(--surface-2);letter-spacing:.02em}
@@ -289,7 +292,6 @@ tr:hover td{background:#FAFBFC}
       <div class="page-title" id="pageTitle">总览</div>
       <div class="top-actions">
         <a class="btn btn-primary" href="/upload?type=qr${esc(qs)}">${ICONS.qr}<span>二维码签到</span></a>
-        <a class="btn btn-ghost" href="/upload?type=photo${esc(qs)}">${ICONS.camera}<span>拍照签到</span></a>
       </div>
     </header>
 
@@ -359,13 +361,14 @@ tr:hover td{background:#FAFBFC}
         <div class="section">
           <div class="section-head"><span class="section-title">说明</span></div>
           <div style="padding:14px 18px;font-size:13px;color:var(--text-2);line-height:1.8">
-            配置修改后需重启软件生效。二维码/拍照签到可直接点击右上角按钮上传，也可用手机访问本机局域网地址上传。
+            支持普通、位置、二维码三种签到。二维码签到可把任意签到二维码图片直接拖入本窗口自动识别签到（二维码更新后拖入新码即可），也可点击右上角按钮或手机访问本机局域网地址上传。
           </div>
         </div>
       </section>
     </main>
   </div>
 </div>
+<div class="drag-mask" id="dragMask"><div class="drag-box">松开即可上传二维码签到图片<small>支持任意签到二维码，识别后自动完成签到</small></div></div>
 
 <script>
 (function(){
@@ -426,6 +429,36 @@ tr:hover td{background:#FAFBFC}
   function poll(){fetch('/api/status').then(function(r){return r.json()}).then(render).catch(function(){})}
   if(location.hash&&views.indexOf(location.hash.slice(1))>=0)show(location.hash.slice(1))
   window.addEventListener('hashchange',function(){var v=location.hash.slice(1);if(views.indexOf(v)>=0)show(v)})
+  // 二维码图片拖拽签到：任意签到码拖入窗口即解析并签到（二维码更新后拖新码即可）
+  var dragMask=document.getElementById('dragMask')
+  var toastTimer=null
+  function showToast(msg){
+    var t=document.getElementById('dragToast')
+    if(!t){
+      t=document.createElement('div');t.id='dragToast'
+      t.style.cssText='position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#1B1F24;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;z-index:1000;box-shadow:0 6px 20px rgba(0,0,0,.2);max-width:70vw'
+      document.body.appendChild(t)
+    }
+    t.textContent=msg;t.style.display='block'
+    clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.style.display='none'},5000)
+  }
+  window.addEventListener('dragover',function(e){e.preventDefault();if(dragMask&&!dragMask.classList.contains('show'))dragMask.classList.add('show')})
+  window.addEventListener('dragleave',function(e){if(dragMask&&e.target===document.documentElement)dragMask.classList.remove('show')})
+  window.addEventListener('drop',function(e){
+    e.preventDefault()
+    if(dragMask)dragMask.classList.remove('show')
+    var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]
+    if(!f)return
+    if(f.type.indexOf('image/')!==0){showToast('请拖入二维码图片文件');return}
+    showToast('二维码图片已接收，正在识别签到…')
+    fetch('/upload/image?type=qr',{method:'POST',body:f,headers:{'Content-Type':f.type}})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.success){showToast('✅ '+d.message);setTimeout(function(){location.reload()},1500)}
+        else{showToast('❌ '+(d.error||'处理失败'))}
+      })
+      .catch(function(err){showToast('❌ 上传失败: '+err.message)})
+  })
   var saveBtn=document.getElementById('cfgSaveBtn')
   if(saveBtn)saveBtn.addEventListener('click',function(){
     var u=document.getElementById('cfgUsername').value.trim()

@@ -21,11 +21,6 @@ import {
   setPendingQr,
   takeLatestPendingQr,
   hasPendingQr,
-  setPendingPhoto,
-  takeLatestPendingPhoto,
-  hasPendingPhoto,
-  setCurrentPhoto,
-  getCurrentPhoto,
 } from './providers/sign-state'
 import type { ImMessage, CheckinInfo } from './types'
 
@@ -74,15 +69,6 @@ async function main() {
   initLocationStore(config.storage.dataDir)
   setProxy(config.proxy) // 代理全局生效（登录/签到请求均可走）
 
-  // 拍照签到：上传图片暂存目录与保存助手
-  const photoDir = path.join(config.storage.dataDir, 'photos')
-  if (!fs.existsSync(photoDir)) fs.mkdirSync(photoDir, { recursive: true })
-  const savePhotoBuffer = (buf: Buffer): string => {
-    const p = path.join(photoDir, `upload_${Date.now()}.jpg`)
-    fs.writeFileSync(p, buf)
-    return p
-  }
-
   // 控制台状态数据提供者（每次请求实时计算；闭包引用后续初始化的模块）
   // 注意：上传页服务先于业务模块启动，早期请求可能命中 TDZ，故全部包 try/catch
   const getConsoleStatus = () => {
@@ -111,7 +97,6 @@ async function main() {
         cookieValid: !!primaryMeta.cookie,
         imConnected: watchdog.imConnected,
         qrPending: hasPendingQr(),
-        photoPending: hasPendingPhoto(),
       }
     } catch (e) {
       // 业务模块尚未初始化完成（服务刚启动被立即访问），返回基础信息
@@ -208,27 +193,14 @@ async function main() {
         return
       }
 
-      if (checkinInfo.type === 'photo') {
-        const defaultPhoto = getCurrentPhoto() || config.photo?.path
-        if (defaultPhoto && fs.existsSync(defaultPhoto)) {
-          logger.info(`${courseName} 是拍照签到，使用已配置的默认照片: ${defaultPhoto}`)
-          const results = await checkinHandler.handlePhoto(aid, defaultPhoto, { courseName, courseId, classId })
-          const summary = results.map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`).join('\n')
-          await notifier.notify(`✅ ${courseName} 拍照签到结果`, summary)
-          const allFailed = results.length > 0 && results.every(r => !r.success)
-          if (allFailed) allowRetryOnFailure(aid)
-          else clearFail(aid)
-        } else {
-          setPendingPhoto(aid, { courseName, courseId, classId })
-          clearFail(aid)
-          logger.warn(`${courseName} 是拍照签到，等待上传照片`)
-          const baseUrl = config.dingtalk?.publicUrl || `http://127.0.0.1:${config.dingtalk?.port || 3456}`
-          const uploadUrl = `${baseUrl}/upload?type=photo${config.web?.token ? `&token=${encodeURIComponent(config.web.token)}` : ''}`
-          await notifier.notify(
-            `⚠️ ${courseName} - 拍照签到`,
-            `请上传一张照片（与二维码签到同模式）\naid: ${aid}\n\n手机上传: ${uploadUrl}`,
-          )
-        }
+      if (checkinInfo.type === 'photo' || checkinInfo.type === 'gesture') {
+        // 本软件已移除拍照/手势自动签到：检测到仅提示，不尝试自动提交
+        const typeName = checkinInfo.type === 'photo' ? '拍照' : '手势'
+        logger.warn(`${courseName} 是${typeName}签到，本软件已移除该类型自动签到，请在学习通中手动完成`)
+        await notifier.notify(
+          `⚠️ ${courseName} - ${typeName}签到`,
+          `本软件不支持${typeName}签到自动完成，请在学习通 APP 中手动签到\naid: ${aid}`,
+        )
         return
       }
 
@@ -317,85 +289,37 @@ async function main() {
 
   // 9. 钉钉回调服务器图片处理（服务已在启动早期创建并启动，这里仅绑定 onImage 回调）
   if (dtServer) {
-    dtServer.onImage(async (imageBuffer: Buffer, type?: 'qr' | 'photo') => {
-      // 按上传页声明的类型路由；未声明类型时维持原 QR 优先逻辑（钉钉机器人回调无类型）
-      if (type === 'photo') {
-        if (hasPendingPhoto()) {
-          const pending = takeLatestPendingPhoto()
-          if (!pending) return
-          const { aid, info } = pending
-          const photoPath = savePhotoBuffer(imageBuffer)
-          logger.info(`收到拍照签到照片，开始上传... (aid: ${aid})`)
-          const results = await checkinHandler.handlePhoto(aid, photoPath, info)
-          const summary = results
-            .map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`)
-            .join('\n')
-          await notifier.notify('✅ 拍照签到结果', summary)
-          const allFailed = results.length > 0 && results.every(r => !r.success)
-          if (allFailed) allowRetryOnFailure(aid)
-          else clearFail(aid)
-          return
-        }
-        // 声明是 photo 但无待处理：存为默认照片
-        const photoPath = savePhotoBuffer(imageBuffer)
-        setCurrentPhoto(photoPath)
-        logger.info(`已保存默认照片: ${photoPath}`)
-        await notifier.notify('📷 已保存默认照片', '后续拍照签到将直接使用此照片')
+    dtServer.onImage(async (imageBuffer: Buffer) => {
+      // 二维码签到：解析图片中的二维码（enc + aid），支持拖拽/上传任意签到码
+      const payload = await decodeQrFromBuffer(imageBuffer, config.ocr)
+
+      if (!payload) {
+        logger.error('未能从图片中解析出二维码 enc 参数')
+        await notifier.notify('❌ 二维码解析失败', '请确认拖入/上传的是学习通签到二维码图片')
         return
       }
 
-      // qr 或未声明类型：二维码优先
-      if (hasPendingQr()) {
-        const pending = takeLatestPendingQr()
-        if (!pending) return
-        const { aid, info } = pending
-
-        logger.info(`收到二维码图片，正在解析... (aid: ${aid})`)
-        const enc = await decodeQrFromBuffer(imageBuffer, config.ocr)
-
-        if (!enc) {
-          // 解析失败则保留待处理状态，便于用户重试
-          setPendingQr(aid, { courseName: info.courseName })
-          logger.error('未能从图片中解析出二维码 enc 参数')
-          await notifier.notify('❌ 二维码解析失败', '请确认拍到的是学习通签到二维码')
-          return
-        }
-
-        logger.info(`解析到 enc: ${enc}，开始签到...`)
-        const results = await checkinHandler.handleQr(aid, enc)
-        const summary = results
-          .map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`)
-          .join('\n')
-        await notifier.notify('✅ 二维码签到结果', summary)
-        const allFailed = results.length > 0 && results.every(r => !r.success)
-        if (allFailed) allowRetryOnFailure(aid)
-        else clearFail(aid)
+      // 优先使用软件已检测到的待处理签到；否则直接使用二维码自带的 aid（二维码更新后任意拖入即可）
+      const pending = hasPendingQr() ? takeLatestPendingQr() : null
+      const aid = pending?.aid || payload.aid
+      if (!aid) {
+        logger.warn('未检测到待处理签到，且二维码未包含活动编号，无法确定签到活动')
+        await notifier.notify(
+          '⚠️ 无法确定签到活动',
+          '当前没有检测到待处理的签到，且该二维码未包含活动编号，请等签到发布后再拖入二维码',
+        )
         return
       }
 
-      // 其次：拍照签到
-      if (hasPendingPhoto()) {
-        const pending = takeLatestPendingPhoto()
-        if (!pending) return
-        const { aid, info } = pending
-        const photoPath = savePhotoBuffer(imageBuffer)
-        logger.info(`收到拍照签到照片，开始上传... (aid: ${aid})`)
-        const results = await checkinHandler.handlePhoto(aid, photoPath, info)
-        const summary = results
-          .map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`)
-          .join('\n')
-        await notifier.notify('✅ 拍照签到结果', summary)
-        const allFailed = results.length > 0 && results.every(r => !r.success)
-        if (allFailed) allowRetryOnFailure(aid)
-        else clearFail(aid)
-        return
-      }
-
-      // 没有待处理签到：把这张图存为默认照片，供以后拍照签到复用
-      const photoPath = savePhotoBuffer(imageBuffer)
-      setCurrentPhoto(photoPath)
-      logger.info(`已保存默认照片: ${photoPath}`)
-      await notifier.notify('📷 已保存默认照片', '后续拍照签到将直接使用此照片')
+      logger.info(`解析到二维码 enc（aid=${aid}），开始签到...`)
+      const results = await checkinHandler.handleQr(aid, payload.enc)
+      const summary = results
+        .map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`)
+        .join('\n')
+      await notifier.notify('✅ 二维码签到结果', summary)
+      const allFailed = results.length > 0 && results.every(r => !r.success)
+      if (allFailed) allowRetryOnFailure(aid)
+      else clearFail(aid)
     })
   }
 
@@ -481,7 +405,7 @@ async function main() {
     }
   })
 
-  // 11. 二维码 / 拍照 文件夹监听（图片经 OCR 解析或存为照片处理）
+  // 11. 二维码文件夹监听（把签到二维码图片放进 qrcode 目录即可自动识别签到）
   const qrDir = path.join(process.cwd(), 'qrcode')
   if (!fs.existsSync(qrDir)) fs.mkdirSync(qrDir, { recursive: true })
 
@@ -500,44 +424,25 @@ async function main() {
       logger.info(`检测到图片: ${filename}`)
       const buffer = fs.readFileSync(filePath)
 
-      // 二维码优先
-      if (hasPendingQr()) {
-        const enc = await decodeQrFromBuffer(buffer, config.ocr)
-        if (!enc) {
-          logger.error('未能从文件夹图片中解析出二维码 enc 参数')
-          return
-        }
-        const pending = takeLatestPendingQr()
-        if (!pending) return
-        logger.info(`解析到 enc: ${enc}，开始签到...`)
-        const results = await checkinHandler.handleQr(pending.aid, enc)
-        const summary = results.map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`).join('\n')
-        await notifier.notify('✅ 二维码签到结果', summary)
-        const allFailed = results.length > 0 && results.every(r => !r.success)
-        if (allFailed) allowRetryOnFailure(pending.aid)
-        else clearFail(pending.aid)
+      // 二维码签到：解析图片中的二维码（enc + aid）
+      const payload = await decodeQrFromBuffer(buffer, config.ocr)
+      if (!payload) {
+        logger.error('未能从文件夹图片中解析出二维码 enc 参数')
         return
       }
-
-      // 拍照签到
-      if (hasPendingPhoto()) {
-        const pending = takeLatestPendingPhoto()
-        if (!pending) return
-        const photoPath = savePhotoBuffer(buffer)
-        logger.info(`文件夹图片作为拍照签到照片，开始上传... (aid: ${pending.aid})`)
-        const results = await checkinHandler.handlePhoto(pending.aid, photoPath, pending.info)
-        const summary = results.map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`).join('\n')
-        await notifier.notify('✅ 拍照签到结果', summary)
-        const allFailed = results.length > 0 && results.every(r => !r.success)
-        if (allFailed) allowRetryOnFailure(pending.aid)
-        else clearFail(pending.aid)
+      const pending = hasPendingQr() ? takeLatestPendingQr() : null
+      const aid = pending?.aid || payload.aid
+      if (!aid) {
+        logger.warn('未检测到待处理签到，且二维码未包含活动编号，无法确定签到活动')
         return
       }
-
-      // 没有待处理签到：存为默认照片
-      const photoPath = savePhotoBuffer(buffer)
-      setCurrentPhoto(photoPath)
-      logger.info(`已保存默认照片: ${photoPath}`)
+      logger.info(`解析到二维码 enc（aid=${aid}），开始签到...`)
+      const results = await checkinHandler.handleQr(aid, payload.enc)
+      const summary = results.map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`).join('\n')
+      await notifier.notify('✅ 二维码签到结果', summary)
+      const allFailed = results.length > 0 && results.every(r => !r.success)
+      if (allFailed) allowRetryOnFailure(aid)
+      else clearFail(aid)
     } catch (e: any) {
       logger.error(`图片处理失败: ${e.message}`)
     }
