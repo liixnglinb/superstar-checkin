@@ -3,6 +3,7 @@ import * as crypto from 'crypto'
 import axios from 'axios'
 import { logger } from '../utils/logger'
 import { getProxyConfig } from '../providers/runtime-config'
+import { getConsolePage, ConsoleStatus } from './console-ui'
 
 export interface DingTalkMessage {
   msgtype: string
@@ -17,6 +18,9 @@ export interface DingTalkMessage {
 
 type ImageHandler = (imageBuffer: Buffer, type?: 'qr' | 'photo') => Promise<void>
 
+/** 控制台首页数据提供者（每次请求时实时获取） */
+export type StatusProvider = () => Record<string, any>
+
 export interface DingTalkServerOptions {
   /** 企业内部应用的 AppKey（用于获取 access_token 与图片下载） */
   appKey?: string
@@ -24,6 +28,8 @@ export interface DingTalkServerOptions {
   token?: string
   /** 允许跨域的来源（可选） */
   allowedOrigin?: string
+  /** 控制台首页状态数据提供者（可选） */
+  statusProvider?: StatusProvider
 }
 
 /**
@@ -42,6 +48,7 @@ export class DingTalkServer {
   private appKey?: string
   private token?: string
   private allowedOrigin?: string
+  private statusProvider?: StatusProvider
 
   constructor(
     private port: number,
@@ -52,6 +59,7 @@ export class DingTalkServer {
     this.appKey = options.appKey
     this.token = options.token
     this.allowedOrigin = options.allowedOrigin
+    this.statusProvider = options.statusProvider
   }
 
   /**
@@ -79,6 +87,23 @@ export class DingTalkServer {
       if (req.method === 'GET' && req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }))
+        return
+      }
+
+      // 状态 API（控制台数据）
+      if (req.method === 'GET' && req.url === '/api/status') {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+        res.end(JSON.stringify(this.getStatus()))
+        return
+      }
+
+      // 控制台首页（软件主界面）
+      if (req.method === 'GET' && (req.url === '/' || req.url === '/console')) {
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Security-Policy': "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'",
+        })
+        res.end(getConsolePage(this.getStatus(), this.token || ''))
         return
       }
 
@@ -326,6 +351,13 @@ async function upload(){
 </script>
 </body>
 </html>`
+  }
+
+  /**
+   * 控制台状态数据（实时获取）
+   */
+  getStatus(): ConsoleStatus {
+    return this.statusProvider ? (this.statusProvider() as ConsoleStatus) : {}
   }
 
   stop() {

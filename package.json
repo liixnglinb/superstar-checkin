@@ -1,17 +1,22 @@
 {
   "name": "chaoxing-auto-sign",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Chaoxing (学习通) Auto Check-in System v3",
-  "main": "build/index.js",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "ts-node src/index.ts",
-    "build": "tsc && node -e \"var fs=require('fs'),p=require('path');var s='src/sdk',d='build/sdk';fs.mkdirSync(d,{recursive:true});if(fs.existsSync(s))fs.readdirSync(s).forEach(f=>fs.copyFileSync(p.join(s,f),p.join(d,f)))\"",
+    "build": "tsc && node -e \"var fs=require('fs'),p=require('path');var s='src/sdk',d='build/sdk';fs.mkdirSync(d,{recursive:true});if(fs.existsSync(s))fs.readdirSync(s).forEach(f=>fs.copyFileSync(p.join(s,f),p.join(d,f)))\" && node embed-config.js",
     "start": "node build/index.js",
     "docker-start": "node build/index.js",
     "typecheck": "tsc --noEmit",
     "pack": "node build-sea.js"
   },
-  "keywords": ["chaoxing", "checkin", "学习通", "签到"],
+  "keywords": [
+    "chaoxing",
+    "checkin",
+    "学习通",
+    "签到"
+  ],
   "author": "",
   "license": "GPL-3.0",
   "dependencies": {
@@ -24,8 +29,8 @@
     "jsqr": "^1.4.0",
     "pngjs": "^7.0.0",
     "tough-cookie": "^4.1.3",
-    "yaml": "^2.4.0",
-    "ws": "^8.16.0"
+    "ws": "^8.16.0",
+    "yaml": "^2.4.0"
   },
   "optionalDependencies": {
     "nodemailer": "^6.9.0",
@@ -38,13 +43,64 @@
     "@types/pngjs": "^6.0.5",
     "@types/ws": "^8.5.0",
     "@yao-pkg/pkg": "^6.22.0",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
+    "png-to-ico": "^3.0.2",
     "postject": "^1.0.0-alpha.6",
     "qrcode": "^1.5.4",
+    "resedit": "^3.1.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.4.0"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "productName": "学习通自动签到",
+  "build": {
+    "appId": "com.liixnglinb.chaoxing-checkin",
+    "productName": "学习通自动签到",
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "assets"
+    },
+    "files": [
+      "build/**/*",
+      "electron/**/*",
+      "assets/app-icon.ico",
+      "!node_modules/tencentcloud-sdk-nodejs/**",
+      "!node_modules/sharp/**",
+      "!node_modules/nodemailer/**",
+      "!node_modules/electron/**"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
+    "win": {
+      "icon": "assets/app-icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "学习通自动签到-安装版-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "学习通自动签到",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "学习通自动签到-安装版-${version}.${ext}"
+    }
   }
 }

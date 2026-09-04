@@ -52,6 +52,17 @@ function allowRetryOnFailure(aid: string) {
   }
 }
 
+function openBrowser(url: string) {
+  const cp = require('child_process')
+  const cmd =
+    process.platform === 'win32'
+      ? `cmd /c start "" "${url}"`
+      : process.platform === 'darwin'
+        ? `open "${url}"`
+        : `xdg-open "${url}"`
+  cp.exec(cmd, (err: any) => { if (err) logger.warn(`自动打开浏览器失败: ${err.message}`) })
+}
+
 async function main() {
   // 1. 加载配置
   logger.info('=== ChaoXing Auto Sign v3.1 ===')
@@ -72,6 +83,42 @@ async function main() {
     return p
   }
 
+  // 控制台状态数据提供者（每次请求实时计算；闭包引用后续初始化的模块）
+  // 注意：上传页服务先于业务模块启动，早期请求可能命中 TDZ，故全部包 try/catch
+  const getConsoleStatus = () => {
+    const base: any = {
+      version: '3.1',
+      mode: config.listener.mode,
+      pollInterval: config.listener.pollInterval,
+      port: config.dingtalk?.port || 3456,
+      uptime: process.uptime(),
+    }
+    try {
+      const history = checkinHandler.getHistory()
+      const okRe = /成功|✅|已签到/
+      const successCount = history.filter((r: any) => okRe.test(r.result)).length
+      return {
+        ...base,
+        accounts: config.accounts.map((a: any) => {
+          const meta = accountManager.getMeta(a.username)
+          return { username: a.username, name: meta?.name || '', schoolname: meta?.schoolname || '' }
+        }),
+        courses,
+        recent: history.slice(0, 10),
+        recordCount: history.length,
+        successCount,
+        failCount: history.length - successCount,
+        cookieValid: !!primaryMeta.cookie,
+        imConnected: watchdog.imConnected,
+        qrPending: hasPendingQr(),
+        photoPending: hasPendingPhoto(),
+      }
+    } catch (e) {
+      // 业务模块尚未初始化完成（服务刚启动被立即访问），返回基础信息
+      return base
+    }
+  }
+
   // 上传页服务：独立于登录，先启动，保证 3456 随时可用（不受代理/登录成败影响）
   let dtServer: DingTalkServer | null = null
   if (config.dingtalk?.port) {
@@ -80,6 +127,7 @@ async function main() {
       appKey: config.dingtalk.appKey,
       token: config.web?.token,
       allowedOrigin: config.web?.allowedOrigin,
+      statusProvider: getConsoleStatus,
     })
     dtServer.start()
     logger.info(`上传页服务已启动: http://0.0.0.0:${dtPort}`)
@@ -364,6 +412,11 @@ async function main() {
       watchdog.alerted = false // 恢复正常后允许下次再告警
     }
   }, WATCHDOG_INTERVAL)
+
+  // 9.6 自动打开控制台（GUI 打包环境通过 NO_OPEN_BROWSER 禁用）
+  if (config.web?.openBrowser !== false && !process.env.NO_OPEN_BROWSER) {
+    openBrowser(`http://127.0.0.1:${config.dingtalk?.port || 3456}/`)
+  }
 
   logger.success('系统初始化完毕')
   logger.info('')

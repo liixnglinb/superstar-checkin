@@ -169,6 +169,8 @@ export interface AppConfig {
     port: number
     token?: string
     allowedOrigin?: string
+    /** 启动成功后自动在浏览器打开控制台首页（默认 true） */
+    openBrowser?: boolean
   }
   /** 拍照签到：默认照片路径（可选）。留空则每次拍照签到需经上传链接提供照片。 */
   photo?: {
