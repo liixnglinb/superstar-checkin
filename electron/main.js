@@ -89,7 +89,34 @@ function createTray() {
   const img = nativeImage.createFromPath(ICON)
   tray = new Tray(img.resize({ width: 16, height: 16 }))
   tray.setToolTip('学习通自动签到 · 运行中')
+  rebuildTrayMenu('今日已签 - · 失败 -')
+  tray.on('double-click', () => openWindow())
+  // 每 30 秒刷新托盘今日统计
+  setInterval(refreshTrayStats, 30000)
+  refreshTrayStats()
+}
+
+function refreshTrayStats() {
+  const http = require('http')
+  const req = http.get('http://127.0.0.1:3456/api/status', (res) => {
+    let body = ''
+    res.on('data', (d) => { body += d })
+    res.on('end', () => {
+      try {
+        const s = JSON.parse(body)
+        const t = s.todayStats || { success: 0, fail: 0 }
+        rebuildTrayMenu(`今日已签 ${t.success} · 失败 ${t.fail}`)
+      } catch (e) { /* 服务未就绪，保持旧文案 */ }
+    })
+  })
+  req.on('error', () => {})
+  req.setTimeout(3000, () => req.destroy())
+}
+
+function rebuildTrayMenu(todayLine) {
+  if (!tray) return
   const menu = Menu.buildFromTemplate([
+    { label: todayLine, enabled: false },
     { label: '打开控制台', click: () => openWindow() },
     { type: 'separator' },
     {
@@ -101,7 +128,6 @@ function createTray() {
     },
   ])
   tray.setContextMenu(menu)
-  tray.on('double-click', () => openWindow())
 }
 
 app.whenReady().then(() => {

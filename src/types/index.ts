@@ -55,6 +55,8 @@ export interface CheckinResult {
   courseName?: string
   aid: string
   duration?: number
+  /** 签到发生时间戳（今日统计/日报用） */
+  timestamp?: number
 }
 
 export interface CheckinRecord {
@@ -132,6 +134,8 @@ export interface AppConfig {
   listener: {
     mode: 'im' | 'poll' | 'hybrid'
     pollInterval: number
+    /** 轮询随机抖动（秒）：每次轮询在固定间隔上叠加 0~jitter 随机延迟，降低被风控识别的规律性；0 = 关闭 */
+    pollJitter?: number
   }
   checkin: {
     delay: { min: number; max: number }
@@ -149,6 +153,8 @@ export interface AppConfig {
       amapKey?: string
       baiduKey?: string
     }
+    /** 位置签到半径（米）：以老师发布坐标为中心生成签到点，默认 10 */
+    locationRadius?: number
   }
   notify: {
     channels: NotifyChannel[]
@@ -162,6 +168,12 @@ export interface AppConfig {
       /** 结束时间 HH:mm，如 07:00 */
       end: string
     }
+  }
+  /** 每日签到日报：每天固定时间推送当日签到总结 */
+  report?: {
+    enabled: boolean
+    /** 推送小时（0~23），默认 22 */
+    hour: number
   }
   dingtalk?: {
     appKey: string

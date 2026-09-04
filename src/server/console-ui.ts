@@ -27,6 +27,12 @@ export interface ConsoleStatus {
   qrPending?: boolean
   notifyDesktop?: boolean
   quiet?: { enabled: boolean; start: string; end: string }
+  todayStats?: { total: number; success: number; fail: number }
+  pollJitter?: number
+  locationRadius?: number
+  retryMaxAttempts?: number
+  retryDelayMs?: number
+  report?: { enabled: boolean; hour: number }
 }
 
 const ICONS = {
@@ -178,11 +184,28 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
 
   // 运行设置表单（保存到 config.yaml，重启生效）
   const settingsForm = `
-    <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;max-width:560px;box-sizing:border-box">
+    <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;max-width:620px;box-sizing:border-box">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <label class="field-label" for="setPoll" style="width:110px">轮询间隔（秒）</label>
         <input class="field-input" id="setPoll" type="number" min="10" max="600" value="${Math.round((status.pollInterval || 30000) / 1000)}" style="width:120px">
         <span class="field-hint" style="line-height:1.5">10~600，越小发现签到越快，越频繁越可能被风控（默认 30）</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setJitter" style="width:110px">轮询随机抖动（秒）</label>
+        <input class="field-input" id="setJitter" type="number" min="0" max="120" value="${Math.round(status.pollJitter || 15)}" style="width:120px">
+        <span class="field-hint" style="line-height:1.5">每次轮询叠加 0~抖动 的随机延迟，避免固定节奏被风控识别（0 = 关闭）</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setRetry" style="width:110px">失败重试次数</label>
+        <input class="field-input" id="setRetry" type="number" min="1" max="10" value="${status.retryMaxAttempts || 3}" style="width:120px">
+        <label class="field-label" for="setRetryDelay" style="width:90px;margin-left:10px">重试间隔（秒）</label>
+        <input class="field-input" id="setRetryDelay" type="number" min="1" max="120" value="${Math.round((status.retryDelayMs || 5000) / 1000)}" style="width:120px">
+        <span class="field-hint" style="line-height:1.5">签到失败后自动重试的次数与间隔</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setRadius" style="width:110px">位置签到半径（米）</label>
+        <input class="field-input" id="setRadius" type="number" min="1" max="500" value="${Math.round(status.locationRadius || 10)}" style="width:120px">
+        <span class="field-hint" style="line-height:1.5">以老师发布坐标为中心生成签到点（默认 10）</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <label class="field-label" for="setDesktop" style="width:110px">桌面通知</label>
@@ -196,6 +219,12 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
         <span class="field-hint">至</span>
         <input class="field-input" id="setQuietEnd" type="time" value="${esc(quiet.end)}" style="width:110px">
         <span class="field-hint" style="line-height:1.5">期间不弹桌面通知，签到照常进行</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setReport" style="width:110px">每日签到日报</label>
+        <button class="switch ${status.report && status.report.enabled !== false ? 'on' : ''}" id="setReport" type="button" role="switch"><span class="knob"></span></button>
+        <input class="field-input" id="setReportHour" type="number" min="0" max="23" value="${(status.report && status.report.hour) || 22}" style="width:80px">
+        <span class="field-hint">点推送当天签到总结（成功/失败/未成功课程）</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <label class="field-label" for="setAutoLaunch" style="width:110px">开机自启</label>
@@ -850,17 +879,27 @@ tr:hover td{background:#FCFAF8}
       .catch(function(){msg.textContent='❌ 清空失败';msg.style.color='#B42318';clearHistoryBtn.disabled=false})
   })
 
-  // ===== 运行设置（轮询间隔 / 桌面通知 / 免打扰时段） =====
+  // ===== 运行设置（轮询/抖动/重试/半径/通知/免打扰/日报） =====
   var settingsSaveBtn=document.getElementById('settingsSaveBtn')
   if(settingsSaveBtn)settingsSaveBtn.addEventListener('click',function(){
     var poll=document.getElementById('setPoll').value
+    var jitter=document.getElementById('setJitter').value
+    var retry=document.getElementById('setRetry').value
+    var retryDelay=document.getElementById('setRetryDelay').value
+    var radius=document.getElementById('setRadius').value
     var desktop=document.getElementById('setDesktop').classList.contains('on')
     var quietOn=document.getElementById('setQuiet').classList.contains('on')
     var qs=document.getElementById('setQuietStart').value
     var qe=document.getElementById('setQuietEnd').value
+    var reportOn=document.getElementById('setReport').classList.contains('on')
+    var reportHour=document.getElementById('setReportHour').value
     var msg=document.getElementById('settingsMsg')
     settingsSaveBtn.disabled=true;settingsSaveBtn.textContent='保存中…'
-    fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pollInterval:poll,desktop:desktop,quietEnabled:quietOn,quietStart:qs,quietEnd:qe})})
+    fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      pollInterval:poll,pollJitter:jitter,retryMaxAttempts:retry,retryDelayMs:retryDelay*1000,
+      locationRadius:radius,desktop:desktop,quietEnabled:quietOn,quietStart:qs,quietEnd:qe,
+      reportEnabled:reportOn,reportHour:reportHour
+    })})
       .then(function(r){return r.json()})
       .then(function(d){
         msg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||'保存失败')
@@ -874,7 +913,7 @@ tr:hover td{background:#FCFAF8}
     var el=document.getElementById(id)
     if(el)el.addEventListener('click',function(){el.classList.toggle('on')})
   }
-  bindSwitch('setDesktop');bindSwitch('setQuiet')
+  bindSwitch('setDesktop');bindSwitch('setQuiet');bindSwitch('setReport')
   // 测试通知
   var notifyTestBtn=document.getElementById('notifyTestBtn')
   if(notifyTestBtn)notifyTestBtn.addEventListener('click',function(){

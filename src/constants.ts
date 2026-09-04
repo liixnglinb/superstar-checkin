@@ -35,6 +35,7 @@ export const EASEMOB = {
 // 默认值
 export const DEFAULTS = {
   POLL_INTERVAL: 30000,       // 轮询间隔 30 秒
+  POLL_JITTER: 15,            // 轮询随机抖动（秒）：0~15 随机，防规律性被风控识别
   CHECKIN_DELAY_MIN: 15,     // 签到延迟下限（秒）
   CHECKIN_DELAY_MAX: 45,     // 签到延迟上限（秒）
   RETRY_MAX: 3,               // 最大重试次数
@@ -42,6 +43,7 @@ export const DEFAULTS = {
   GPS_DRIFT_MIN: 5,           // GPS 漂移下限（米）
   GPS_DRIFT_MAX: 30,          // GPS 漂移上限（米）
   GEO_RADIUS: 10,             // 位置签到：在教师坐标 10 米范围内生成签到点
+  REPORT_HOUR: 22,            // 每日签到日报推送小时
   TRIANGULATE_RADIUS: 50,     // 三角定位目标半径（米）
   MAX_HISTORY: 500,           // 签到历史最大条数
   MAX_LEARNED_LOC: 50,        // 已学坐标最大条数

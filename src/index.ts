@@ -23,6 +23,7 @@ import {
   hasPendingQr,
 } from './providers/sign-state'
 import type { ImMessage, CheckinInfo } from './types'
+import { DEFAULTS } from './constants'
 
 import * as readline from 'readline'
 import * as fs from 'fs'
@@ -106,6 +107,13 @@ async function main() {
         accountName: r.accountName || r.account || '',
         timestamp: r.timestamp || Date.now(),
       }))
+      // 今日签到统计（托盘菜单/日报用）：按当天 0 点起算
+      const dayStart = new Date()
+      dayStart.setHours(0, 0, 0, 0)
+      const dayStartTs = dayStart.getTime()
+      const todayRecords = history.filter((r: any) => (r.timestamp || 0) >= dayStartTs)
+      const todaySuccess = todayRecords.filter((r: any) => okRe.test(r.message || r.result)).length
+      const todayStats = { total: todayRecords.length, success: todaySuccess, fail: todayRecords.length - todaySuccess }
       return {
         ...base,
         accounts: config.accounts.map((a: any) => {
@@ -119,11 +127,17 @@ async function main() {
         recordCount: history.length,
         successCount,
         failCount: history.length - successCount,
+        todayStats,
         cookieValid: !!primaryMeta.cookie,
         imConnected: watchdog.imConnected,
         qrPending: hasPendingQr(),
         notifyDesktop: config.notify.desktop !== false,
         quiet: config.notify.quiet,
+        pollJitter: config.listener.pollJitter || 0,
+        locationRadius: config.geo.locationRadius || 10,
+        retryMaxAttempts: config.checkin.retry.maxAttempts,
+        retryDelayMs: config.checkin.retry.delayMs,
+        report: config.report,
       }
     } catch (e) {
       // 业务模块尚未初始化完成（服务刚启动被立即访问），返回基础信息
@@ -142,7 +156,7 @@ async function main() {
       applyWatchFilter()
       if (pollListener) pollListener.stop()
       if (config.listener.mode === 'poll' || config.listener.mode === 'hybrid') {
-        const pl = new PollListener(config.listener.pollInterval)
+        const pl = new PollListener(config.listener.pollInterval, (config.listener.pollJitter || 0) * 1000)
         pl.onActivity((aid, courseId, classId, courseName) => {
           watchdog.lastActivityAt = Date.now()
           processCheckin(aid, courseId, classId, courseName)
@@ -353,7 +367,7 @@ async function main() {
       await notifier.notify('⚠️ 轮询监听异常', '课程列表为空，轮询无法发现签到活动，请检查登录状态')
         .catch(() => {})
     }
-    pollListener = new PollListener(config.listener.pollInterval)
+    pollListener = new PollListener(config.listener.pollInterval, (config.listener.pollJitter || 0) * 1000)
     pollListener.onActivity((aid, courseId, classId, courseName) => {
       watchdog.lastActivityAt = Date.now()
       processCheckin(aid, courseId, classId, courseName)
@@ -424,6 +438,51 @@ async function main() {
       watchdog.alerted = false // 恢复正常后允许下次再告警
     }
   }, WATCHDOG_INTERVAL)
+
+  // 9.55 每日签到日报：每天固定时间推送当日签到总结（桌面通知 + 已配置的外部通道）
+  async function sendDailyReport() {
+    try {
+      const history = checkinHandler.getHistory()
+      const dayStart = new Date()
+      dayStart.setHours(0, 0, 0, 0)
+      const okRe2 = /成功|✅|已签到/
+      const today = history.filter((r: any) => (r.timestamp || 0) >= dayStart.getTime())
+      const okCount = today.filter((r: any) => okRe2.test(r.message || r.result)).length
+      const failList = today.filter((r: any) => !okRe2.test(r.message || r.result)).slice(0, 10)
+      if (today.length === 0) {
+        logger.info('日报：今天还没有签到记录')
+        await notifier.notify('📊 今日签到日报', `今天（${dayStart.getMonth() + 1}月${dayStart.getDate()}日）还没有签到记录\n一切正常时表示今天无签到活动`)
+        return
+      }
+      let content = `今日共处理 ${today.length} 次签到，成功 ${okCount} 次`
+      if (failList.length > 0) {
+        content += `，失败 ${failList.length} 次\n\n未成功签到：\n`
+        content += failList.map((r: any) => `· ${r.courseName || '未知课程'} (${r.type || '普通'})`).join('\n')
+      } else {
+        content += '，全部成功 🎉'
+      }
+      await notifier.notify('📊 今日签到日报', content)
+      logger.success('今日签到日报已推送')
+    } catch (e: any) {
+      logger.error(`日报发送失败: ${e.message}`)
+    }
+  }
+
+  function scheduleDailyReport() {
+    const now = new Date()
+    const hour = Math.max(0, Math.min(23, config.report?.hour ?? DEFAULTS.REPORT_HOUR))
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0, 0, 0)
+    if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1)
+    const delay = next.getTime() - now.getTime()
+    setTimeout(() => {
+      if (config.report?.enabled !== false) {
+        sendDailyReport().catch(() => {})
+      }
+      scheduleDailyReport()
+    }, delay)
+    logger.info(`每日签到日报已启用（每天 ${hour}:00 推送，当前${config.report?.enabled === false ? '关闭' : '开启'}）`)
+  }
+  if (config.report?.enabled !== false) scheduleDailyReport()
 
   // 9.6 自动打开控制台（GUI 打包环境通过 NO_OPEN_BROWSER 禁用）
   if (config.web?.openBrowser !== false && !process.env.NO_OPEN_BROWSER) {

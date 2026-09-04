@@ -4,6 +4,7 @@ import YAML from 'yaml'
 import type { AppConfig } from '../types'
 import { DEFAULTS } from '../constants'
 import { logger } from '../utils/logger'
+import { decryptPassword, encryptPassword, isEncrypted } from '../utils/crypto'
 
 /**
  * 打包为独立 exe 时，由 build-sea.js 通过 esbuild define 注入当前 config.yaml 的 base64。
@@ -18,6 +19,7 @@ const DEFAULT_CONFIG: Partial<AppConfig> = {
   listener: {
     mode: 'hybrid',
     pollInterval: DEFAULTS.POLL_INTERVAL,
+    pollJitter: DEFAULTS.POLL_JITTER,
   },
   checkin: {
     delay: { min: DEFAULTS.CHECKIN_DELAY_MIN, max: DEFAULTS.CHECKIN_DELAY_MAX },
@@ -32,12 +34,14 @@ const DEFAULT_CONFIG: Partial<AppConfig> = {
   geo: {
     locations: [],
     providers: {},
+    locationRadius: DEFAULTS.GEO_RADIUS,
   },
   notify: {
     channels: [],
     desktop: true,
     quiet: { enabled: false, start: '23:00', end: '07:00' },
   },
+  report: { enabled: true, hour: DEFAULTS.REPORT_HOUR },
   dingtalk: {
     appKey: '',
     appSecret: '',
@@ -71,6 +75,46 @@ export function loadConfig(filePath?: string): AppConfig {
 
   // 账号可为空：首次运行在软件内引导填写（支持多用户各自登录自己的账号）
   if (!config.accounts) config.accounts = []
+
+  // 密码解密 + 明文自动迁移加密（DPAPI 不可用时保持明文并告警）
+  // 内存中为明文（登录用），config.yaml 文件中为 DPAPI 加密串
+  let needRewrite = false
+  for (const acc of config.accounts) {
+    if (!isEncrypted(acc.password)) {
+      if (acc.password) {
+        const enc = encryptPassword(acc.password)
+        if (enc) {
+          needRewrite = true // 内存保持明文供登录，文件由下方 raw 写回加密串
+          logger.info(`账号 ${acc.username} 密码已自动加密存储`)
+        } else {
+          logger.warn(`账号 ${acc.username} 密码加密不可用，继续使用明文（不影响运行）`)
+        }
+      }
+    } else {
+      const plain = decryptPassword(acc.password)
+      if (plain) {
+        acc.password = plain
+      } else {
+        logger.error(`账号 ${acc.username} 密码解密失败，登录将无法进行，请在设置页重新保存密码`)
+      }
+    }
+  }
+  if (needRewrite) {
+    try {
+      // 基于文件原始内容写回，仅把明文密码替换为加密串，不落内存明文
+      const rawAccounts = Array.isArray(raw.accounts) ? raw.accounts : []
+      for (const ra of rawAccounts) {
+        if (ra && ra.password && !isEncrypted(ra.password)) {
+          const enc = encryptPassword(ra.password)
+          if (enc) ra.password = enc
+        }
+      }
+      fs.writeFileSync(file, YAML.stringify(raw), 'utf-8')
+      logger.info('config.yaml 已更新（密码加密存储）')
+    } catch (e: any) {
+      logger.warn(`密码加密写回失败: ${e.message}`)
+    }
+  }
 
   return config
 }

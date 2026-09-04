@@ -5,6 +5,7 @@ import YAML from 'yaml'
 import axios from 'axios'
 import { logger } from '../utils/logger'
 import { getProxyConfig } from '../providers/runtime-config'
+import { encryptPassword } from '../utils/crypto'
 import { getConsolePage, ConsoleStatus } from './console-ui'
 
 export interface DingTalkMessage {
@@ -136,12 +137,14 @@ export class DingTalkServer {
             : {}
           const accounts = Array.isArray(existing.accounts) ? existing.accounts : []
           const idx = accounts.findIndex((a: any) => String(a.username) === username)
+          // 密码加密存储（DPAPI，绑定当前 Windows 用户；加密失败降级明文并告警）
+          const encPwd = encryptPassword(password) || password
           let action = '新增'
           if (idx >= 0) {
-            accounts[idx] = { ...accounts[idx], username, password }
+            accounts[idx] = { ...accounts[idx], username, password: encPwd }
             action = '更新'
           } else {
-            accounts.push({ username, password })
+            accounts.push({ username, password: encPwd })
           }
           existing.accounts = accounts
           fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
@@ -246,6 +249,42 @@ export class DingTalkServer {
                 start: String(body.quietStart || '23:00'),
                 end: String(body.quietEnd || '07:00'),
               },
+            }
+          }
+          // 轮询随机抖动（秒，0=关闭）
+          if (body.pollJitter !== undefined && body.pollJitter !== null && body.pollJitter !== '') {
+            const j = Number(body.pollJitter)
+            if (j >= 0 && j <= 120) {
+              existing.listener = { ...(existing.listener || {}), pollJitter: Math.round(j) }
+            }
+          }
+          // 签到重试（同一次签到内的请求重试次数与间隔）
+          if (body.retryMaxAttempts !== undefined && body.retryMaxAttempts !== null && body.retryMaxAttempts !== '') {
+            const n = Number(body.retryMaxAttempts)
+            if (n >= 1 && n <= 10) {
+              existing.checkin = { ...(existing.checkin || {}), retry: { ...((existing.checkin || {}).retry || {}), maxAttempts: Math.round(n) } }
+            }
+          }
+          if (body.retryDelayMs !== undefined && body.retryDelayMs !== null && body.retryDelayMs !== '') {
+            const d = Number(body.retryDelayMs)
+            if (d >= 1000 && d <= 120000) {
+              existing.checkin = { ...(existing.checkin || {}), retry: { ...((existing.checkin || {}).retry || {}), delayMs: Math.round(d) } }
+            }
+          }
+          // 位置签到半径（米）
+          if (body.locationRadius !== undefined && body.locationRadius !== null && body.locationRadius !== '') {
+            const r = Number(body.locationRadius)
+            if (r >= 1 && r <= 500) {
+              existing.geo = { ...(existing.geo || {}), locationRadius: Math.round(r) }
+            }
+          }
+          // 每日签到日报
+          if (body.reportEnabled !== undefined || body.reportHour !== undefined) {
+            existing.report = {
+              enabled: body.reportEnabled !== undefined ? !!body.reportEnabled : !!((existing.report || {}).enabled),
+              hour: body.reportHour !== undefined && body.reportHour !== null && body.reportHour !== ''
+                ? Math.max(0, Math.min(23, Number(body.reportHour) || 22))
+                : ((existing.report || {}).hour || 22),
             }
           }
           fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')

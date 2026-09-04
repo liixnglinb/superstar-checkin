@@ -16,10 +16,13 @@ type ActivityHandler = (activeId: string, courseId: number, classId: number, cou
 export class PollListener {
   private timer: NodeJS.Timeout | null = null
   private interval: number
+  /** 随机抖动（毫秒）：每次轮询在固定间隔上叠加 0~jitter 随机值，降低规律性（防风控） */
+  private jitterMs: number
   private handler: ActivityHandler | null = null
 
-  constructor(intervalMs: number = 30000) {
+  constructor(intervalMs: number = 30000, jitterMs: number = 15000) {
     this.interval = intervalMs
+    this.jitterMs = jitterMs
   }
 
   onActivity(handler: ActivityHandler) {
@@ -66,8 +69,17 @@ export class PollListener {
     // 首次执行
     poll()
 
-    // 定时执行
-    this.timer = setInterval(poll, this.interval)
+    // 定时执行（带随机抖动：interval + 0~jitter，防规律性被风控识别）
+    const scheduleNext = () => {
+      const jitter = this.jitterMs > 0 ? Math.floor(Math.random() * this.jitterMs) : 0
+      this.timer = setTimeout(poll, this.interval + jitter)
+    }
+    const chain = async () => {
+      await poll()
+      if (this.timer) clearTimeout(this.timer)
+      scheduleNext()
+    }
+    this.timer = setTimeout(chain, this.interval)
   }
 
   stop() {

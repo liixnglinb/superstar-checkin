@@ -69,6 +69,7 @@ export class CheckinHandler {
           courseName,
           aid,
           duration: Date.now() - startTime,
+          timestamp: Date.now(),
         }
 
         results.push(cr)
@@ -86,6 +87,7 @@ export class CheckinHandler {
           type: checkinInfo.type,
           courseName,
           aid,
+          timestamp: Date.now(),
         }
         results.push(cr)
         logger.error(`${meta.name} 签到失败: ${e.message}`)
@@ -109,6 +111,7 @@ export class CheckinHandler {
           info.location,
           this.config.geo.locations,
           this.config.geo.providers,
+          this.config.geo.locationRadius,
         )
 
       case 'qr':
@@ -137,6 +140,7 @@ export class CheckinHandler {
           message: result,
           type: 'qr',
           aid,
+          timestamp: Date.now(),
         })
       } catch (e: any) {
         results.push({
@@ -146,6 +150,7 @@ export class CheckinHandler {
           message: e.message,
           type: 'qr',
           aid,
+          timestamp: Date.now(),
         })
       }
     }

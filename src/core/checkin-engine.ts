@@ -219,6 +219,8 @@ export class CheckinEngine {
     geoInfo?: { address: string; lat: any; lon: any; range?: string },
     configLocations?: any[],
     geoProviders?: { amapKey?: string; baiduKey?: string },
+    /** 签到点生成半径（米），默认 10（DEFAULTS.GEO_RADIUS），可由设置页调整 */
+    radius?: number,
   ): Promise<string> {
     const jar = new CookieJar()
     const client = wrapper(axios.create({ jar, proxy: getProxyConfig() }))
@@ -259,8 +261,10 @@ export class CheckinEngine {
       })) + '\n[警告: 无坐标，降级为普通签到]'
     }
 
-    // 带 GPS 漂移的首次签到：在教师坐标 10 米范围内生成签到点
-    const drifted = addGpsDrift(lat, lon, DEFAULTS.GEO_RADIUS)
+    const radiusM = radius && radius > 0 ? radius : DEFAULTS.GEO_RADIUS
+
+    // 带 GPS 漂移的首次签到：在教师坐标 radiusM 米范围内生成签到点
+    const drifted = addGpsDrift(lat, lon, radiusM)
     const firstResult = await this.submitSign(client, account.cookie, {
       name: account.name, address: apiAddress, activeId, uid: account.uid,
       latitude: drifted.lat, longitude: drifted.lon,
@@ -272,7 +276,7 @@ export class CheckinEngine {
       const learned = getLearnedLocation(apiAddress)
       if (learned) {
         logger.info(`尝试已学坐标: (${learned.lat}, ${learned.lon})`)
-        const ld = addGpsDrift(learned.lat, learned.lon, DEFAULTS.GEO_RADIUS)
+        const ld = addGpsDrift(learned.lat, learned.lon, radiusM)
         const lr = await this.submitSign(client, account.cookie, {
           name: account.name, address: apiAddress, activeId, uid: account.uid,
           latitude: ld.lat, longitude: ld.lon,
