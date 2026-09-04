@@ -1,4 +1,6 @@
 import jsdom from 'jsdom'
+import axios from 'axios'
+import cheerio from 'cheerio'
 import { logger } from '../utils/logger'
 import { EASEMOB } from '../constants'
 import type { ImMessage } from '../types'
@@ -45,6 +47,7 @@ export class ImListener {
   private reconnectTimer: NodeJS.Timeout | null = null
   private refreshTimer: NodeJS.Timeout | null = null
   private reconnectAttempt = 0
+  private reconnectFailCount = 0
   private tokenRefreshMs: number
   /** 连接状态回调（看门狗用） */
   onStatusChange: ((connected: boolean) => void) | null = null
@@ -113,6 +116,7 @@ export class ImListener {
         this.connected = true
         this.lastConnectedAt = Date.now()
         this.reconnectAttempt = 0
+        this.reconnectFailCount = 0
         logger.success('IM 协议连接成功')
         this.onStatusChange?.(true)
       },
@@ -157,8 +161,16 @@ export class ImListener {
   async connect(cookie: string, uid: number): Promise<void> {
     this.cookie = cookie
     this.uid = uid
-    await this.openWithFreshToken()
-    this.startTokenRefresh()
+    try {
+      await this.openWithFreshToken()
+      this.startTokenRefresh()
+    } catch (e: any) {
+      // 首次连接失败（如学习通下线 webim/me token 接口 / Cookie 失效 / 网络抖动）：
+      // 记录日志并调度重连，不向调用方抛错，保证轮询/上传页流程正常继续。
+      this.reconnectFailCount++
+      logger.error(`IM 连接失败（hybrid/poll 模式由轮询兜底）: ${e.message}`)
+      this.scheduleReconnect()
+    }
   }
 
   /** 重新拉取 IM token 并打开连接 */
@@ -173,9 +185,15 @@ export class ImListener {
     })
   }
 
-  /** 断线后按退避间隔重连，避免雪崩 */
+  /** 断线后按退避间隔重连，避免雪崩。
+   *  连续失败超过阈值（如 token 接口被服务端下线）时降为低频重试（30 分钟一次），
+   *  避免对已失效接口高频发送无效请求刷屏日志。 */
   private scheduleReconnect(delayMs = 5000) {
     if (this.reconnectTimer) return
+    this.reconnectFailCount++
+    if (this.reconnectFailCount > 5) {
+      delayMs = 30 * 60 * 1000
+    }
     const backoff = Math.min(delayMs * Math.pow(2, this.reconnectAttempt), 60000)
     this.reconnectAttempt++
     this.reconnectTimer = setTimeout(async () => {
@@ -183,6 +201,7 @@ export class ImListener {
       try {
         logger.info(`IM 重连中（第 ${this.reconnectAttempt} 次）...`)
         await this.openWithFreshToken()
+        this.startTokenRefresh()
       } catch (e: any) {
         logger.error(`IM 重连失败: ${e.message}`)
         this.scheduleReconnect()
@@ -206,10 +225,10 @@ export class ImListener {
     }, this.tokenRefreshMs)
   }
 
-  /** 仅拉取 token，不触发 conn.open */
+  /** 仅拉取 token，不触发 conn.open。
+   *  注意：cheerio/axios 用顶部静态 import（esModuleInterop 正确处理 CJS 默认导出），
+   *  此前动态 import 在 CommonJS 编译下取 .default 为 undefined，会导致 token 解析崩溃。 */
   private async fetchToken(): Promise<string> {
-    const axios = (await import('axios')).default
-    const cheerio = (await import('cheerio')).default
     const res = await axios.get('https://im.chaoxing.com/webim/me', {
       headers: {
         Cookie: this.cookie,

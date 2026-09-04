@@ -2,14 +2,16 @@ import { logger } from '../utils/logger'
 import { getCourseActivities, type ActivityItem, type CourseInfo } from '../core/course'
 import { CheckinEngine } from '../core/checkin-engine'
 import type { AccountMetaData } from '../types'
-import { isProcessed, markProcessed, trimProcessed } from '../providers/sign-state'
+import { isProcessed, trimProcessed } from '../providers/sign-state'
 
 type ActivityHandler = (activeId: string, courseId: number, classId: number, courseName: string) => void
 
 /**
  * 轮询监听器：定时检查课程活动列表，发现新的签到活动
  *
- * 去重改用 sign-state 的全局集合，与 IM 监听器共享，避免 hybrid 模式下重复签到。
+ * 去重：只调用 isProcessed 做「只查不标」判断，真正的标记由 processCheckin 统一完成。
+ * 注意：不能在这里调用 markProcessed 直接标记——否则 processCheckin 内部二次判重
+ * 会把轮询发现的签到全部跳过（此前纯 poll 模式 100% 漏签的回归 bug）。
  */
 export class PollListener {
   private timer: NodeJS.Timeout | null = null
@@ -41,8 +43,8 @@ export class PollListener {
             const isCheckin = act.activeType === 2 ||
               (act.activeType === 0 && act.name?.includes('签到'))
 
-            // 用全局去重集合，标记返回 true 表示之前已处理（含 IM 已处理的情况）
-            if (isCheckin && !markProcessed(act.activeId)) {
+            // 只查不标：已处理（含 IM 已处理的情况）则跳过，标记交给 processCheckin
+            if (isCheckin && !isProcessed(act.activeId)) {
               logger.info(`发现新签到: ${course.courseName} - ${act.name} (aid: ${act.activeId})`)
               this.handler?.(
                 act.activeId,

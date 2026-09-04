@@ -14,6 +14,10 @@ import { decodeQrFromBuffer } from './utils/qr-decoder'
 import { setProxy } from './providers/runtime-config'
 import {
   markProcessed,
+  unmarkProcessed,
+  recordFail,
+  clearFail,
+  shouldRetryFail,
   setPendingQr,
   takeLatestPendingQr,
   hasPendingQr,
@@ -36,6 +40,17 @@ process.on('uncaughtException', (err) => {
   logger.error('未捕获的异常，进程将退出:', err)
   process.exit(1)
 })
+
+/** 全部账号签到失败时：撤销标记允许重试（带次数上限），避免一次性漏签 */
+function allowRetryOnFailure(aid: string) {
+  const n = recordFail(aid)
+  if (shouldRetryFail(aid)) {
+    logger.warn(`aid ${aid} 签到失败（第 ${n} 次），将允许下一轮重试`)
+    unmarkProcessed(aid)
+  } else {
+    logger.error(`aid ${aid} 连续 ${n} 次失败，放弃重试`)
+  }
+}
 
 async function main() {
   // 1. 加载配置
@@ -124,10 +139,11 @@ async function main() {
 
       if (checkinInfo.type === 'qr') {
         setPendingQr(aid, { courseName })
+        clearFail(aid)
         logger.warn(`${courseName} 是二维码签到，等待上传图片`)
 
         const baseUrl = config.dingtalk?.publicUrl || `http://127.0.0.1:${config.dingtalk?.port || 3456}`
-        const uploadUrl = `${baseUrl}/upload?type=qr${config.dingtalk?.token ? `&token=${encodeURIComponent(config.dingtalk.token)}` : ''}`
+        const uploadUrl = `${baseUrl}/upload?type=qr${config.web?.token ? `&token=${encodeURIComponent(config.web.token)}` : ''}`
 
         await notifier.notify(
           `⚠️ ${courseName} - 二维码签到`,
@@ -143,11 +159,15 @@ async function main() {
           const results = await checkinHandler.handlePhoto(aid, defaultPhoto, { courseName, courseId, classId })
           const summary = results.map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`).join('\n')
           await notifier.notify(`✅ ${courseName} 拍照签到结果`, summary)
+          const allFailed = results.length > 0 && results.every(r => !r.success)
+          if (allFailed) allowRetryOnFailure(aid)
+          else clearFail(aid)
         } else {
           setPendingPhoto(aid, { courseName, courseId, classId })
+          clearFail(aid)
           logger.warn(`${courseName} 是拍照签到，等待上传照片`)
           const baseUrl = config.dingtalk?.publicUrl || `http://127.0.0.1:${config.dingtalk?.port || 3456}`
-          const uploadUrl = `${baseUrl}/upload?type=photo${config.dingtalk?.token ? `&token=${encodeURIComponent(config.dingtalk.token)}` : ''}`
+          const uploadUrl = `${baseUrl}/upload?type=photo${config.web?.token ? `&token=${encodeURIComponent(config.web.token)}` : ''}`
           await notifier.notify(
             `⚠️ ${courseName} - 拍照签到`,
             `请上传一张照片（与二维码签到同模式）\naid: ${aid}\n\n手机上传: ${uploadUrl}`,
@@ -159,9 +179,16 @@ async function main() {
       const results = await checkinHandler.handle(aid, courseId, classId, courseName, checkinInfo)
       const summary = results.map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`).join('\n')
       await notifier.notify(`✅ ${courseName} 签到结果`, summary)
+
+      // 失败重试：全部账号失败则撤销标记，允许下一轮重试（有次数上限）
+      const allFailed = results.length > 0 && results.every(r => !r.success)
+      if (allFailed) allowRetryOnFailure(aid)
+      else clearFail(aid)
     } catch (e: any) {
       logger.error(`处理签到失败: ${e.message}`)
-      await notifier.notify('❌ 签到异常', `${courseName} aid:${aid}\n${e.message}`)
+      await notifier.notify('❌ 签到异常', `${courseName} aid:${aid}\n${e.message}`).catch(() => {})
+      // 异常（getDetail 失败/Cookie 失效等）同样允许重试，带次数上限
+      allowRetryOnFailure(aid)
     }
   }
 
@@ -246,6 +273,9 @@ async function main() {
             .map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`)
             .join('\n')
           await notifier.notify('✅ 拍照签到结果', summary)
+          const allFailed = results.length > 0 && results.every(r => !r.success)
+          if (allFailed) allowRetryOnFailure(aid)
+          else clearFail(aid)
           return
         }
         // 声明是 photo 但无待处理：存为默认照片
@@ -279,6 +309,9 @@ async function main() {
           .map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`)
           .join('\n')
         await notifier.notify('✅ 二维码签到结果', summary)
+        const allFailed = results.length > 0 && results.every(r => !r.success)
+        if (allFailed) allowRetryOnFailure(aid)
+        else clearFail(aid)
         return
       }
 
@@ -294,6 +327,9 @@ async function main() {
           .map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`)
           .join('\n')
         await notifier.notify('✅ 拍照签到结果', summary)
+        const allFailed = results.length > 0 && results.every(r => !r.success)
+        if (allFailed) allowRetryOnFailure(aid)
+        else clearFail(aid)
         return
       }
 
@@ -312,7 +348,7 @@ async function main() {
   const ACTIVITY_TIMEOUT = 30 * 60 * 1000
   setInterval(() => {
     const now = Date.now()
-    const imDown = config.listener.mode !== 'poll' && !watchdog.imConnected
+    const imDown = config.listener.mode === 'im' && !watchdog.imConnected
     const stale = now - watchdog.lastActivityAt > ACTIVITY_TIMEOUT
 
     if ((imDown || stale) && !watchdog.alerted) {
@@ -414,6 +450,9 @@ async function main() {
         const results = await checkinHandler.handleQr(pending.aid, enc)
         const summary = results.map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`).join('\n')
         await notifier.notify('✅ 二维码签到结果', summary)
+        const allFailed = results.length > 0 && results.every(r => !r.success)
+        if (allFailed) allowRetryOnFailure(pending.aid)
+        else clearFail(pending.aid)
         return
       }
 
@@ -426,6 +465,9 @@ async function main() {
         const results = await checkinHandler.handlePhoto(pending.aid, photoPath, pending.info)
         const summary = results.map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`).join('\n')
         await notifier.notify('✅ 拍照签到结果', summary)
+        const allFailed = results.length > 0 && results.every(r => !r.success)
+        if (allFailed) allowRetryOnFailure(pending.aid)
+        else clearFail(pending.aid)
         return
       }
 

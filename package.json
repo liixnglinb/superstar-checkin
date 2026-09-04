@@ -8,7 +8,8 @@
     "build": "tsc && node -e \"var fs=require('fs'),p=require('path');var s='src/sdk',d='build/sdk';fs.mkdirSync(d,{recursive:true});if(fs.existsSync(s))fs.readdirSync(s).forEach(f=>fs.copyFileSync(p.join(s,f),p.join(d,f)))\"",
     "start": "node build/index.js",
     "docker-start": "node build/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pack": "node build-sea.js"
   },
   "keywords": ["chaoxing", "checkin", "学习通", "签到"],
   "author": "",
@@ -18,23 +19,30 @@
     "axios-cookiejar-support": "^5.0.0",
     "chalk": "4",
     "cheerio": "1.0.0-rc.12",
+    "jpeg-js": "^0.4.4",
     "jsdom": "^24.0.0",
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0",
     "tough-cookie": "^4.1.3",
     "yaml": "^2.4.0",
     "ws": "^8.16.0"
   },
   "optionalDependencies": {
-    "tencentcloud-sdk-nodejs": "^4.0.0",
     "nodemailer": "^6.9.0",
     "sharp": "^0.33.0",
-    "jsqr": "^1.4.0"
+    "tencentcloud-sdk-nodejs": "^4.0.0"
   },
   "devDependencies": {
     "@types/jsdom": "^21.0.0",
     "@types/node": "^20.0.0",
+    "@types/pngjs": "^6.0.5",
     "@types/ws": "^8.5.0",
-    "typescript": "^5.4.0",
-    "ts-node": "^10.9.0"
+    "@yao-pkg/pkg": "^6.22.0",
+    "esbuild": "^0.25.0",
+    "postject": "^1.0.0-alpha.6",
+    "qrcode": "^1.5.4",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.4.0"
   },
   "engines": {
     "node": ">=18.0.0"

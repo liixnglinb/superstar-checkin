@@ -11,6 +11,18 @@ export interface CourseInfo {
   imageUrl: string
 }
 
+/** 把接口异常响应转成简洁可读的错误消息，避免整页 HTML 刷爆日志 */
+function describeApiError(data: any): string {
+  if (data && typeof data === 'object') {
+    return JSON.stringify(data).substring(0, 200)
+  }
+  const text = String(data ?? '')
+  if (text.includes('用户登录') || text.includes('<!DOCTYPE') || text.includes('<html')) {
+    return '未登录或 Cookie 失效（接口返回登录页）'
+  }
+  return text.substring(0, 200)
+}
+
 /**
  * 获取用户当前学期的课程列表
  */
@@ -25,8 +37,8 @@ export async function getCourseList(cookie: string): Promise<CourseInfo[]> {
     proxy: getProxyConfig(),
   })
 
-  if (res.data.result !== 1) {
-    throw new Error('获取课程列表失败: ' + JSON.stringify(res.data))
+  if (!res.data || typeof res.data !== 'object' || res.data.result !== 1) {
+    throw new Error('获取课程列表失败: ' + describeApiError(res.data))
   }
 
   const channelList = res.data.channelList || []
@@ -41,8 +53,10 @@ export async function getCourseList(cookie: string): Promise<CourseInfo[]> {
     if (!data) continue
 
     courses.push({
-      courseId: data.courseId || String(channel.key || ''),
-      classId: data.classId || String(channel.id || ''),
+      courseId: String(channel.key || data.courseId || ''),
+      // 学习通结构：channel.key 是 courseId；classId 在 course.data[0].id（课程空间 ID）。
+      // 旧代码取 data.classId / channel.id，前者不存在、后者恒为 0，导致 classId 全空。
+      classId: String(data.id || data.classId || channel.id || ''),
       courseName: data.name || data.courseName || '未知课程',
       teacherName: data.teacherfactor || data.teacherName || '',
       imageUrl: data.imageurl || '',
@@ -88,7 +102,7 @@ export async function getCourseActivities(
     proxy: getProxyConfig(),
   })
 
-  if (res.data.result !== 1) return []
+  if (!res.data || typeof res.data !== 'object' || res.data.result !== 1) return []
 
   const activeList = res.data.data?.activeList || []
   return activeList.map((a: any) => ({

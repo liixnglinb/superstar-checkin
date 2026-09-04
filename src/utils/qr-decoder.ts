@@ -2,21 +2,27 @@ import axios from 'axios'
 import * as crypto from 'crypto'
 import { logger } from './logger'
 import { QR_REGEX } from '../constants'
+import { decodeImage } from './image-decode'
 
 /**
  * 从图片 Buffer 中解析二维码，返回 enc 参数
  * 支持腾讯云 OCR 和本地 jsQR 两种方式
  */
+
+// sharp 为可选增强（原生模块，pkg 打包 exe 时不内嵌）。
+// 用变量形式 require，避免打包器把它静态收集进产物（原生二进制无法内联）。
+const SHARP_MOD = 'sharp'
+
 export async function decodeQrFromBuffer(
   buffer: Buffer,
   ocrConfig?: { provider: string; tencent?: { secretId: string; secretKey: string } },
 ): Promise<string | null> {
-  // 方式1：腾讯云 OCR
+  // 方式1：腾讯云 OCR（显式配置时优先）
   if (ocrConfig?.provider === 'tencent' && ocrConfig.tencent) {
     return decodeViaTencentOcr(buffer, ocrConfig.tencent)
   }
 
-  // 方式2：本地 jsQR（需要安装 jsqr）
+  // 方式2：本地 jsQR（纯 JS 图片解码 + jsQR，无需原生模块）
   return decodeViaJsQR(buffer)
 }
 
@@ -103,41 +109,64 @@ async function decodeViaTencentOcr(
   }
 }
 
+/** 提取 jsQR 解码文本中的 enc 参数 */
+function extractEnc(text: string): string | null {
+  const match = text.match(QR_REGEX) || text.match(/enc=([\dA-Fa-f]+)/)
+  if (!match) return null
+  return match[5] || match[1] || null
+}
+
 /**
- * 本地 jsQR 解码（需 npm install jsqr sharp）
+ * 本地 jsQR 解码：默认纯 JS 图片解码（pngjs/jpeg-js/BMP 手动解析）+ jsqr，
+ * 不依赖 sharp 原生模块；若环境已安装 sharp 则优先使用（解码更快、格式更全）。
  */
 async function decodeViaJsQR(buffer: Buffer): Promise<string | null> {
-  try {
-    const sharp = require('sharp')
-    const jsQR = require('jsqr')
+  // jsqr 为纯 JS，可随打包产物内联
+  const jsQR = require('jsqr')
 
-    const { data, info } = await sharp(buffer)
-      .raw()
-      .toBuffer({ resolveWithObject: true })
+  // sharp 增强：仅在真实 node_modules 存在时可用（打包 exe 时不内嵌，变量 require 防静态收集）
+  let sharp: any = null
+  try {
+    sharp = require(SHARP_MOD)
+  } catch {
+    sharp = null
+  }
+
+  try {
+    let data: Buffer
+    let width: number
+    let height: number
+
+    if (sharp) {
+      const raw = await sharp(buffer)
+        .raw()
+        .toBuffer({ resolveWithObject: true })
+      data = raw.data
+      width = raw.info.width
+      height = raw.info.height
+    } else {
+      const img = decodeImage(buffer)
+      data = img.data
+      width = img.width
+      height = img.height
+    }
 
     const code = jsQR(
-      new Uint8ClampedArray(data.buffer),
-      info.width,
-      info.height,
+      new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength),
+      width,
+      height,
     )
 
     if (code?.data) {
       logger.info(`jsQR 解析结果: ${code.data.slice(0, 100)}`)
-      const match = code.data.match(QR_REGEX) || code.data.match(/enc=([\dA-Fa-f]+)/)
-      if (match) {
-        const enc = match[5] || match[1]
-        return enc
-      }
+      const enc = extractEnc(code.data)
+      if (enc) return enc
     }
 
     logger.warn('jsQR 未识别到二维码内容')
     return null
   } catch (e: any) {
-    if (e.code === 'MODULE_NOT_FOUND') {
-      logger.warn('本地 QR 解码需要安装依赖: npm install jsqr sharp')
-    } else {
-      logger.error(`jsQR 解码失败: ${e.message}`)
-    }
+    logger.error(`jsQR 解码失败: ${e.message}`)
     return null
   }
 }

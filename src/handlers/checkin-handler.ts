@@ -6,6 +6,11 @@ import { DEFAULTS } from '../constants'
 import type { AccountMetaData, CheckinInfo, CheckinResult, AppConfig } from '../types'
 import type { AccountManager } from '../providers/account-manager'
 
+/** 统一成功判定：成功 / 签到成功 / 您已签到（重复提交但已签过，视同成功） */
+function isSuccessMessage(result: string): boolean {
+  return result.includes('success') || result.includes('签到成功') || result.includes('您已签到')
+}
+
 /**
  * 签到处理器：协调多账号签到、延迟、重试、历史记录
  */
@@ -58,7 +63,7 @@ export class CheckinHandler {
         const cr: CheckinResult = {
           account: account.username,
           accountName: meta.name,
-          success: result.includes('success') || result.includes('签到成功'),
+          success: isSuccessMessage(result),
           message: result,
           type: checkinInfo.type,
           courseName,
@@ -107,9 +112,9 @@ export class CheckinHandler {
         )
 
       case 'gesture':
-        logger.warn('手势签到需要手势轨迹参数，普通提交大概率失败')
-        return (await CheckinEngine.simpleCheckin(account, aid, { courseId, classId }))
-          .replace(/^/, '[手势·不支持] ')
+        // 手势签到需要滑动轨迹参数，无法自动完成。
+        // 直接抛明确错误，避免做一次必失败的降级提交浪费请求。
+        throw new Error('手势签到需要滑动轨迹，无法自动完成，请手动签到')
 
       case 'qr':
         throw new Error('二维码签到需要提供 enc 参数，请通过 QQ/文件夹/API 提交')
@@ -136,7 +141,7 @@ export class CheckinHandler {
         results.push({
           account: account.username,
           accountName: meta.name,
-          success: result.includes('success'),
+          success: isSuccessMessage(result),
           message: result,
           type: 'qr',
           aid,
@@ -175,7 +180,7 @@ export class CheckinHandler {
         results.push({
           account: account.username,
           accountName: meta.name,
-          success: result.includes('success') || result.includes('签到成功'),
+          success: isSuccessMessage(result),
           message: result,
           type: 'photo',
           courseName: info.courseName,

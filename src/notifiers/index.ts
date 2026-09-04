@@ -112,7 +112,8 @@ class EmailNotifier implements Notifier {
   async send(title: string, content: string): Promise<void> {
     // 使用 nodemailer（需额外安装）
     try {
-      const nodemailer = require('nodemailer')
+      const NODEMAILER = 'nodemailer'
+      const nodemailer = require(NODEMAILER)
       const transporter = nodemailer.createTransport({
         host: this.config.smtpHost,
         port: this.config.smtpPort || 465,
