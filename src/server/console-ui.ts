@@ -17,6 +17,8 @@ export interface ConsoleStatus {
   accounts?: Array<{ username: string; name?: string; schoolname?: string }>
   courses?: Array<{ courseName: string; courseId: number; classId: number }>
   watchCourses?: string[]
+  /** 课程扫描健康：courseId -> 连续轮询失败次数（≥3 时 UI 显示"扫描异常"） */
+  courseHealth?: Record<string, number>
   courseStats?: Array<{ course: string; success: number; fail: number }>
   recent?: Array<{ time: string; courseName: string; type: string; result: string; accountName: string; timestamp?: number }>
   recordCount?: number
@@ -127,12 +129,19 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
   const courseRows = courses.length
     ? courses.map(c => {
         const watching = watchSet.size === 0 || watchSet.has(String(c.courseId))
+        // 课程扫描健康：连续轮询失败 ≥3 次时提示"扫描异常"（多为瞬时网络/网关抖动，重试后自动恢复）
+        const fails = (status.courseHealth || {})[String(c.courseId)] || 0
+        const statePill = !watching
+          ? '<span class="pill pill-off">已停用</span>'
+          : fails >= 3
+            ? '<span class="pill pill-warn" title="近期轮询多次失败，多为瞬时网络或网关限流，已自动重试；持续异常可点击「重新拉取课程列表」">扫描异常</span>'
+            : '<span class="pill pill-ok">监控中</span>'
         return `
       <tr>
         <td class="cell-main">${esc(c.courseName)}</td>
         <td class="cell-mono">${c.courseId}</td>
         <td class="cell-mono">${c.classId}</td>
-        <td><span class="pill ${watching ? 'pill-ok' : 'pill-off'}">${watching ? '监控中' : '已停用'}</span></td>
+        <td>${statePill}</td>
         <td><button class="watch-toggle ${watching ? 'on' : ''}" data-cid="${esc(String(c.courseId))}">${watching ? '关闭监听' : '开启监听'}</button></td>
       </tr>`
       }).join('')
@@ -1007,7 +1016,13 @@ tr:hover td{background:#FCFAF8}
           ? cs2.map(function(c){
               var id2=String(c.courseId)
               var w=watchLocal[id2]!==undefined?watchLocal[id2]:(allOn2||wset2[id2])
-              return '<tr><td class="cell-main">'+esc(c.courseName)+'</td><td class="cell-mono">'+esc(String(c.courseId))+'</td><td class="cell-mono">'+esc(String(c.classId))+'</td><td><span class="pill '+(w?'pill-ok':'pill-off')+'">'+(w?'监控中':'已停用')+'</span></td><td><button class="watch-toggle '+(w?'on':'')+'" data-cid="'+esc(id2)+'">'+(w?'关闭监听':'开启监听')+'</button></td></tr>'
+              var f2=(s.courseHealth||{})[id2]||0
+              var sp=!w
+                ? '<span class="pill pill-off">已停用</span>'
+                : (f2>=3
+                    ? '<span class="pill pill-warn" title="近期轮询多次失败，多为瞬时网络或网关限流，已自动重试">扫描异常</span>'
+                    : '<span class="pill pill-ok">监控中</span>')
+              return '<tr><td class="cell-main">'+esc(c.courseName)+'</td><td class="cell-mono">'+esc(String(c.courseId))+'</td><td class="cell-mono">'+esc(String(c.classId))+'</td><td>'+sp+'</td><td><button class="watch-toggle '+(w?'on':'')+'" data-cid="'+esc(id2)+'">'+(w?'关闭监听':'开启监听')+'</button></td></tr>'
             }).join('')
           : '<tr><td colspan="5" class="cell-empty">暂无课程数据</td></tr>'
       }).catch(function(){})

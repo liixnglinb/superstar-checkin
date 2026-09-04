@@ -5,6 +5,14 @@ import type { AccountMetaData } from '../types'
 import { isProcessed, trimProcessed } from '../providers/sign-state'
 
 type ActivityHandler = (activeId: string, courseId: number, classId: number, courseName: string) => void
+/** 单门课程扫描健康回调：ok=false 表示本轮该课扫描失败（连续失败会反映到 UI 状态列） */
+type HealthHandler = (courseId: string, ok: boolean) => void
+
+/** 瞬时错误（网关 502/5xx/网络中断）需要重试；4xx 等确定性错误直接失败 */
+function isTransientError(e: any): boolean {
+  const status = e?.response?.status
+  return !status || status === 502 || status === 503 || status === 504 || status === 500
+}
 
 /**
  * 轮询监听器：定时检查课程活动列表，发现新的签到活动
@@ -19,6 +27,7 @@ export class PollListener {
   /** 随机抖动（毫秒）：每次轮询在固定间隔上叠加 0~jitter 随机值，降低规律性（防风控） */
   private jitterMs: number
   private handler: ActivityHandler | null = null
+  private healthHandler: HealthHandler | null = null
 
   constructor(intervalMs: number = 30000, jitterMs: number = 15000) {
     this.interval = intervalMs
@@ -29,17 +38,32 @@ export class PollListener {
     this.handler = handler
   }
 
+  /** 注册课程扫描健康回调（成功/失败都会上报，供 UI 展示"扫描异常"） */
+  onHealth(handler: HealthHandler) {
+    this.healthHandler = handler
+  }
+
+  /** 单门课程拉活动：瞬时错误（502/网络抖动）等 1.2s 重试一次，仍失败才抛错 */
+  private async fetchWithRetry(cookie: string, course: CourseInfo): Promise<ActivityItem[]> {
+    try {
+      return await getCourseActivities(cookie, course.courseId, course.classId)
+    } catch (e: any) {
+      if (!isTransientError(e)) throw e
+      logger.warn(`轮询 ${course.courseName} 瞬时失败(${e.response?.status || e.code})，1.2s 后重试...`)
+      await new Promise(r => setTimeout(r, 1200))
+      return getCourseActivities(cookie, course.courseId, course.classId)
+    }
+  }
+
   start(cookie: string, courses: CourseInfo[]) {
     logger.info(`轮询监听已启动, 间隔 ${this.interval / 1000}s, 监控 ${courses.length} 门课程`)
 
     const poll = async () => {
       for (const course of courses) {
         try {
-          const activities = await getCourseActivities(
-            cookie,
-            course.courseId,
-            course.classId,
-          )
+          const activities = await this.fetchWithRetry(cookie, course)
+
+          this.healthHandler?.(course.courseId, true)
 
           for (const act of activities) {
             // 只处理签到活动（activeType=2 或 activeType=0 但名字含"签到"）
@@ -58,6 +82,7 @@ export class PollListener {
             }
           }
         } catch (e: any) {
+          this.healthHandler?.(course.courseId, false)
           logger.error(`轮询 ${course.courseName} 失败: ${e.message}`)
         }
       }

@@ -122,6 +122,7 @@ async function main() {
         }),
         courses,
         watchCourses: config.watchCourses || [],
+        courseHealth: Object.fromEntries(courseHealth),
         courseStats,
         recent,
         recordCount: history.length,
@@ -162,6 +163,7 @@ async function main() {
           watchdog.lastActivityAt = Date.now()
           processCheckin(aid, courseId, classId, courseName)
         })
+        attachHealth(pl)
         pl.start(primaryMeta.cookie, watchedCourses)
         pollListener = pl
       }
@@ -361,6 +363,15 @@ async function main() {
   }
 
   // 轮询监听器（模块级可变：支持「重新拉取课程列表」时重建）
+  // 课程扫描健康状态：courseId -> 连续失败次数（成功清零），供 UI 状态列显示"扫描异常"
+  const courseHealth = new Map<string, number>()
+  function attachHealth(pl: PollListener) {
+    pl.onHealth((courseId, ok) => {
+      if (ok) courseHealth.delete(courseId)
+      else courseHealth.set(courseId, (courseHealth.get(courseId) || 0) + 1)
+    })
+  }
+
   let pollListener: PollListener | null = null
   if (config.listener.mode === 'poll' || config.listener.mode === 'hybrid') {
     if (courses.length === 0) {
@@ -373,6 +384,7 @@ async function main() {
       watchdog.lastActivityAt = Date.now()
       processCheckin(aid, courseId, classId, courseName)
     })
+    attachHealth(pollListener)
     try {
       pollListener.start(primaryMeta.cookie, watchedCourses)
     } catch (e: any) {
