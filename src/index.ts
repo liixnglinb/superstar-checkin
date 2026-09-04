@@ -90,6 +90,7 @@ async function main() {
           return { username: a.username, name: meta?.name || '', schoolname: meta?.schoolname || '' }
         }),
         courses,
+        watchCourses: config.watchCourses || [],
         recent: history.slice(0, 10),
         recordCount: history.length,
         successCount,
@@ -153,6 +154,15 @@ async function main() {
         return []
       })
     : []
+
+  // 按「监听课程」配置过滤：watchCourses 为空 = 监听全部；否则只监听勾选的课程
+  const watchSet = new Set((config.watchCourses || []).map((c: any) => String(c)))
+  const watchedCourses = watchSet.size > 0
+    ? courses.filter(c => watchSet.has(String(c.courseId)))
+    : courses
+  if (watchSet.size > 0) {
+    logger.info(`按监听配置过滤课程: ${courses.length} 门 → 监听 ${watchedCourses.length} 门`)
+  }
 
   // 看门狗状态
   const watchdog = {
@@ -281,7 +291,7 @@ async function main() {
       processCheckin(aid, courseId, classId, courseName)
     })
     try {
-      pollListener.start(primaryMeta.cookie, courses)
+      pollListener.start(primaryMeta.cookie, watchedCourses)
     } catch (e: any) {
       logger.error(`轮询监听器启动失败（不影响上传页）: ${e.message}`)
     }

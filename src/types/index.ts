@@ -172,6 +172,8 @@ export interface AppConfig {
     /** 启动成功后自动在浏览器打开控制台首页（默认 true） */
     openBrowser?: boolean
   }
+  /** 只监听这些课程（courseId 数组）；留空/省略 = 监听全部课程 */
+  watchCourses?: string[]
   /** 拍照签到：默认照片路径（可选）。留空则每次拍照签到需经上传链接提供照片。 */
   photo?: {
     path?: string

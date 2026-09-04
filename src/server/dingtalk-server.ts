@@ -127,6 +127,30 @@ export class DingTalkServer {
         return
       }
 
+      // 监听课程设置（勾选要监控的课程 → 写 config.yaml → 重启生效）
+      if (req.method === 'POST' && req.url === '/api/watch') {
+        try {
+          const body = JSON.parse(await this.readBody(req))
+          const watchCourses: string[] = Array.isArray(body.watchCourses)
+            ? body.watchCourses.map((c: any) => String(c)).filter(Boolean)
+            : []
+          const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+          const existing = fs.existsSync(cfgFile)
+            ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {}
+            : {}
+          existing.watchCourses = watchCourses
+          fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
+          logger.info(`监听课程设置已保存（${watchCourses.length} 门），重启后生效`)
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, message: watchCourses.length ? `已保存，将只监听 ${watchCourses.length} 门课程，重启后生效` : '已保存，将监听全部课程，重启后生效' }))
+        } catch (e: any) {
+          logger.error(`保存监听课程失败: ${e.message}`)
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: `保存失败: ${e.message}` }))
+        }
+        return
+      }
+
       // 控制台首页（软件主界面）
       if (req.method === 'GET' && (req.url === '/' || req.url === '/console')) {
         res.writeHead(200, {

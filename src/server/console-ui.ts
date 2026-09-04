@@ -16,6 +16,7 @@ export interface ConsoleStatus {
   uptime?: number
   accounts?: Array<{ username: string; name?: string; schoolname?: string }>
   courses?: Array<{ courseName: string; courseId: number; classId: number }>
+  watchCourses?: string[]
   recent?: Array<{ time: string; courseName: string; type: string; result: string; accountName: string; timestamp?: number }>
   recordCount?: number
   successCount?: number
@@ -91,6 +92,7 @@ function typeText(t: string): string {
 export function getConsolePage(status: ConsoleStatus, token: string): string {
   const accounts = status.accounts || []
   const courses = status.courses || []
+  const watchSet = new Set((status.watchCourses || []).map((c: any) => String(c)))
   const recent = status.recent || []
   const mode = status.mode || '-'
   const qs = token ? '?token=' + encodeURIComponent(token) : ''
@@ -108,14 +110,18 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
     : `<div class="empty"><p>未配置账号</p><p class="empty-sub">首次使用请在"设置"页填写你的学习通账号（支持多用户各自登录）</p><a class="btn btn-ghost" href="#settings" style="margin-top:12px">去配置账号</a></div>`
 
   const courseRows = courses.length
-    ? courses.map(c => `
+    ? courses.map(c => {
+        const watching = watchSet.size === 0 || watchSet.has(String(c.courseId))
+        return `
       <tr>
         <td class="cell-main">${esc(c.courseName)}</td>
         <td class="cell-mono">${c.courseId}</td>
         <td class="cell-mono">${c.classId}</td>
-        <td><span class="pill pill-ok">监控中</span></td>
-      </tr>`).join('')
-    : `<tr><td colspan="4" class="cell-empty">暂无课程数据</td></tr>`
+        <td><span class="pill ${watching ? 'pill-ok' : 'pill-off'}">${watching ? '监控中' : '已停用'}</span></td>
+        <td><button class="watch-toggle ${watching ? 'on' : ''}" data-cid="${esc(String(c.courseId))}">${watching ? '关闭监听' : '开启监听'}</button></td>
+      </tr>`
+      }).join('')
+    : `<tr><td colspan="5" class="cell-empty">暂无课程数据</td></tr>`
 
   const recent2 = recent.map((r: any) => ({ ...r, timestamp: r.timestamp || r.time }))
   const recentRows = recent2.length
@@ -280,6 +286,32 @@ tr:hover td{background:#FCFAF8}
 .feature-ico svg{width:17px;height:17px}
 .feature-name{font-size:13.5px;font-weight:600}
 .feature-desc{font-size:12.5px;color:var(--text-2);margin-top:2px;line-height:1.6}
+/* ===== 课程监听开关 ===== */
+.watch-bar{padding:10px 18px;font-size:12.5px;color:var(--text-3);border-bottom:1px solid var(--border);background:var(--surface)}
+.watch-toggle{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text-2);font-size:12px;font-weight:600;cursor:pointer;transition:all .12s ease;font-family:var(--font)}
+.watch-toggle:hover{border-color:var(--accent);color:var(--accent)}
+.watch-toggle.on{background:var(--accent-weak);border-color:var(--accent);color:var(--accent)}
+.pill-off{color:var(--text-3);background:var(--surface-2)}
+.section-foot{display:flex;align-items:center;gap:14px;padding:12px 18px}
+/* ===== 二维码签到弹窗 ===== */
+.modal-mask{position:fixed;inset:0;z-index:990;display:flex;align-items:center;justify-content:center;background:rgba(33,27,23,.42)}
+.modal{width:440px;max-width:92vw;background:var(--surface);border-radius:16px;box-shadow:0 18px 48px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden;animation:modalIn .16s ease}
+@keyframes modalIn{from{opacity:0;transform:scale(.96) translateY(6px)}to{opacity:1;transform:none}}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.modal-title{display:flex;align-items:center;gap:8px;font-size:14.5px;font-weight:600}
+.modal-title svg{width:17px;height:17px;color:var(--accent)}
+.modal-close{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:none;background:none;border-radius:8px;color:var(--text-2);cursor:pointer}
+.modal-close:hover{background:var(--surface-2);color:var(--text)}
+.modal-body{padding:20px 18px}
+.qr-drop{border:2px dashed var(--accent);border-radius:14px;background:var(--accent-weak);padding:30px 20px;text-align:center;color:var(--accent);transition:background .12s ease}
+.qr-drop.drag{border-color:var(--accent-strong);background:#F8DCCD}
+.qr-drop>svg{width:44px;height:44px;margin-bottom:10px}
+.qr-drop-text{font-size:14.5px;font-weight:600;color:var(--text)}
+.qr-drop-sub{font-size:12.5px;color:var(--text-2);margin-top:5px}
+.qr-status{margin-top:14px;font-size:13px;color:var(--text-2);text-align:center;min-height:20px}
+.qr-status.ok{color:var(--ok);font-weight:600}
+.qr-status.err{color:var(--err);font-weight:600}
+.modal-foot{padding:12px 18px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3)}
 /* ===== 空态 ===== */
 .empty{padding:36px 18px;text-align:center}
 .empty p{color:var(--text-2);font-size:14px}
@@ -326,7 +358,7 @@ tr:hover td{background:#FCFAF8}
     <header class="topbar">
       <div class="page-title" id="pageTitle">总览</div>
       <div class="top-actions">
-        <a class="btn btn-primary" href="/upload?type=qr${esc(qs)}">${ICONS.qr}<span>二维码签到</span></a>
+        <button class="btn btn-primary" id="btnQrModal">${ICONS.qr}<span>二维码签到</span></button>
       </div>
     </header>
 
@@ -351,10 +383,12 @@ tr:hover td{background:#FCFAF8}
       <section class="view" data-view="courses">
         <div class="section">
           <div class="section-head"><span class="section-title">监控课程</span><span class="section-more" id="courseCount">${courses.length} 门 · 轮询发现签到活动</span></div>
+          <div class="watch-bar">勾选要监听的课程（默认全部监听），保存后重启软件生效</div>
           <table>
-            <thead><tr><th>课程名称</th><th>Course ID</th><th>Class ID</th><th>状态</th></tr></thead>
+            <thead><tr><th>课程名称</th><th>Course ID</th><th>Class ID</th><th>状态</th><th>监听</th></tr></thead>
             <tbody id="coursesBody">${courseRows}</tbody>
           </table>
+          <div class="section-foot"><button class="btn btn-ghost" id="watchSaveBtn">保存监听设置</button><span class="cfg-msg" id="watchMsg"></span></div>
         </div>
       </section>
 
@@ -428,6 +462,29 @@ tr:hover td{background:#FCFAF8}
 </div>
 <div class="drag-mask" id="dragMask"><div class="drag-box">松开即可上传二维码签到图片<small>支持任意签到二维码，识别后自动完成签到</small></div></div>
 
+<!-- 二维码签到弹窗：拖入任意签到码图片即完成签到 -->
+<div class="modal-mask" id="qrModal" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">${ICONS.qr}<span>二维码签到</span></span>
+      <button class="modal-close" id="qrModalClose" title="关闭">${ICONS.x}</button>
+    </div>
+    <div class="modal-body">
+      <div class="qr-drop" id="qrDrop">
+        ${ICONS.qr}
+        <div class="qr-drop-text">把签到二维码图片拖到这里</div>
+        <div class="qr-drop-sub">支持任意签到码，识别后自动完成签到</div>
+        <div style="margin-top:14px">
+          <button class="btn btn-ghost" id="btnPickFile">或选择图片文件</button>
+          <input type="file" id="qrFileInput" accept="image/*" style="display:none">
+        </div>
+      </div>
+      <div class="qr-status" id="qrStatus"></div>
+    </div>
+    <div class="modal-foot">签到二维码会随时间更新，更新后拖入新码即可</div>
+  </div>
+</div>
+
 <script>
 (function(){
   var views=['overview','courses','history','settings']
@@ -468,15 +525,20 @@ tr:hover td{background:#FCFAF8}
           }).join('')
         : '<div class="empty"><p>未配置账号</p><p class="empty-sub">首次使用请在"设置"页填写你的学习通账号</p><a class="btn btn-ghost" href="#settings" style="margin-top:12px">去配置账号</a></div>'
     }
-    // 课程表
+    // 课程表（含监听开关）
     var cb=document.getElementById('coursesBody')
     if(cb){
       var cs2=s.courses||[]
+      var ws2=(s.watchCourses||[]).map(String)
+      var wset2={};ws2.forEach(function(id){wset2[id]=true})
+      var allOn2=ws2.length===0
       cb.innerHTML=cs2.length
         ? cs2.map(function(c){
-            return '<tr><td class="cell-main">'+esc(c.courseName)+'</td><td class="cell-mono">'+esc(String(c.courseId))+'</td><td class="cell-mono">'+esc(String(c.classId))+'</td><td><span class="pill pill-ok">监控中</span></td></tr>'
+            var cid=String(c.courseId)
+            var watching=watchLocal[cid]!==undefined?watchLocal[cid]:(allOn2||wset2[cid])
+            return '<tr><td class="cell-main">'+esc(c.courseName)+'</td><td class="cell-mono">'+esc(String(c.courseId))+'</td><td class="cell-mono">'+esc(String(c.classId))+'</td><td><span class="pill '+(watching?'pill-ok':'pill-off')+'">'+(watching?'监控中':'已停用')+'</span></td><td><button class="watch-toggle '+(watching?'on':'')+'" data-cid="'+esc(cid)+'">'+(watching?'关闭监听':'开启监听')+'</button></td></tr>'
           }).join('')
-        : '<tr><td colspan="4" class="cell-empty">暂无课程数据</td></tr>'
+        : '<tr><td colspan="5" class="cell-empty">暂无课程数据</td></tr>'
     }
     var cc=document.getElementById('courseCount')
     if(cc)cc.textContent=(s.courses||[]).length+' 门 · 轮询发现签到活动'
@@ -500,10 +562,12 @@ tr:hover td{background:#FCFAF8}
     t.textContent=msg;t.style.display='block'
     clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.style.display='none'},5000)
   }
-  window.addEventListener('dragover',function(e){e.preventDefault();if(dragMask&&!dragMask.classList.contains('show'))dragMask.classList.add('show')})
-  window.addEventListener('dragleave',function(e){if(dragMask&&e.target===document.documentElement)dragMask.classList.remove('show')})
+  // 弹窗打开时，窗口级拖拽交给弹窗处理（避免双重上传）
+  window.addEventListener('dragover',function(e){e.preventDefault();if(qrModal&&qrModal.style.display==='flex')return;if(dragMask&&!dragMask.classList.contains('show'))dragMask.classList.add('show')},{capture:true})
+  window.addEventListener('dragleave',function(e){if(dragMask&&e.target===document.documentElement)dragMask.classList.remove('show')},{capture:true})
   window.addEventListener('drop',function(e){
     e.preventDefault()
+    if(qrModal&&qrModal.style.display==='flex')return
     if(dragMask)dragMask.classList.remove('show')
     var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]
     if(!f)return
@@ -555,6 +619,94 @@ tr:hover td{background:#FCFAF8}
   } else {
     // 非 Electron（浏览器调试）时隐藏自绘标题栏
     var tb=document.querySelector('.titlebar');if(tb)tb.style.display='none'
+  }
+  // ===== 课程监听开关 =====
+  var watchLocal={}  // 本地未保存的开关修改（{courseId: bool}）
+  var coursesBody=document.getElementById('coursesBody')
+  if(coursesBody){
+    coursesBody.addEventListener('click',function(e){
+      var btn=e.target.closest('.watch-toggle');if(!btn)return
+      var cid=btn.getAttribute('data-cid')
+      var cur=btn.classList.contains('on')
+      watchLocal[cid]=!cur
+      // 重绘课程表以同步状态列与按钮
+      fetch('/api/status').then(function(r){return r.json()}).then(function(s){
+        var cb=document.getElementById('coursesBody')
+        var cs2=s.courses||[],ws2=(s.watchCourses||[]).map(String)
+        var wset2={};ws2.forEach(function(id){wset2[id]=true})
+        var allOn2=ws2.length===0
+        cb.innerHTML=cs2.length
+          ? cs2.map(function(c){
+              var id2=String(c.courseId)
+              var w=watchLocal[id2]!==undefined?watchLocal[id2]:(allOn2||wset2[id2])
+              return '<tr><td class="cell-main">'+esc(c.courseName)+'</td><td class="cell-mono">'+esc(String(c.courseId))+'</td><td class="cell-mono">'+esc(String(c.classId))+'</td><td><span class="pill '+(w?'pill-ok':'pill-off')+'">'+(w?'监控中':'已停用')+'</span></td><td><button class="watch-toggle '+(w?'on':'')+'" data-cid="'+esc(id2)+'">'+(w?'关闭监听':'开启监听')+'</button></td></tr>'
+            }).join('')
+          : '<tr><td colspan="5" class="cell-empty">暂无课程数据</td></tr>'
+      }).catch(function(){})
+    })
+  }
+  var watchSaveBtn=document.getElementById('watchSaveBtn')
+  if(watchSaveBtn)watchSaveBtn.addEventListener('click',function(){
+    var rows=document.querySelectorAll('#coursesBody .watch-toggle')
+    var onList=[],allOn=true
+    rows.forEach(function(btn){
+      var cid=btn.getAttribute('data-cid')
+      var on=btn.classList.contains('on')
+      if(on)onList.push(cid);else allOn=false
+    })
+    var msg=document.getElementById('watchMsg')
+    watchSaveBtn.disabled=true;watchSaveBtn.textContent='保存中…'
+    fetch('/api/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({watchCourses:allOn?[]:onList})})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        msg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||'保存失败')
+        msg.style.color=d.ok?'#178A5B':'#B42318'
+        watchSaveBtn.disabled=false;watchSaveBtn.textContent='保存监听设置'
+        if(d.ok){watchLocal={};setTimeout(function(){location.reload()},1500)}
+      })
+      .catch(function(){msg.textContent='❌ 保存失败，请重试';msg.style.color='#B42318';watchSaveBtn.disabled=false;watchSaveBtn.textContent='保存监听设置'})
+  })
+
+  // ===== 二维码签到弹窗（拖入/选择图片即签） =====
+  var qrModal=document.getElementById('qrModal')
+  var qrStatus=document.getElementById('qrStatus')
+  function openQrModal(){qrModal.style.display='flex';if(qrStatus){qrStatus.textContent='';qrStatus.className='qr-status'}}
+  function closeQrModal(){qrModal.style.display='none'}
+  var btnQrModal=document.getElementById('btnQrModal')
+  if(btnQrModal)btnQrModal.addEventListener('click',openQrModal)
+  var qrModalClose=document.getElementById('qrModalClose')
+  if(qrModalClose)qrModalClose.addEventListener('click',closeQrModal)
+  if(qrModal)qrModal.addEventListener('click',function(e){if(e.target===qrModal)closeQrModal()})
+  function uploadQrFile(file){
+    if(!file)return
+    if(file.type.indexOf('image/')!==0){qrStatus.textContent='请选择图片文件';qrStatus.className='qr-status err';return}
+    qrStatus.textContent='正在识别签到…';qrStatus.className='qr-status'
+    fetch('/upload/image?type=qr',{method:'POST',body:file,headers:{'Content-Type':file.type}})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.success){qrStatus.textContent='✅ '+d.message;qrStatus.className='qr-status ok'}
+        else{qrStatus.textContent='❌ '+(d.error||'处理失败');qrStatus.className='qr-status err'}
+      })
+      .catch(function(err){qrStatus.textContent='❌ 上传失败: '+err.message;qrStatus.className='qr-status err'})
+  }
+  var qrDrop=document.getElementById('qrDrop')
+  if(qrDrop){
+    qrDrop.addEventListener('dragover',function(e){e.preventDefault();e.stopPropagation();qrDrop.classList.add('drag')})
+    qrDrop.addEventListener('dragleave',function(){qrDrop.classList.remove('drag')})
+    qrDrop.addEventListener('drop',function(e){
+      e.preventDefault();e.stopPropagation();qrDrop.classList.remove('drag')
+      var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]
+      if(f)uploadQrFile(f)
+    })
+  }
+  var btnPickFile=document.getElementById('btnPickFile')
+  var qrFileInput=document.getElementById('qrFileInput')
+  if(btnPickFile&&qrFileInput){
+    btnPickFile.addEventListener('click',function(){qrFileInput.click()})
+    qrFileInput.addEventListener('change',function(){
+      if(qrFileInput.files&&qrFileInput.files[0])uploadQrFile(qrFileInput.files[0])
+      qrFileInput.value=''
+    })
   }
   poll()
   setInterval(poll,5000)

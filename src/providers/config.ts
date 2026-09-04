@@ -14,6 +14,7 @@ declare const __EMBEDDED_CONFIG_B64__: string | undefined
 
 const DEFAULT_CONFIG: Partial<AppConfig> = {
   accounts: [],
+  watchCourses: [],
   listener: {
     mode: 'hybrid',
     pollInterval: DEFAULTS.POLL_INTERVAL,
