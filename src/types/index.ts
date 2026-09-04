@@ -152,6 +152,16 @@ export interface AppConfig {
   }
   notify: {
     channels: NotifyChannel[]
+    /** 桌面通知（软件自带弹窗）：默认开启，false 关闭 */
+    desktop?: boolean
+    /** 免打扰时段：期间不弹桌面通知（签到照常进行） */
+    quiet?: {
+      enabled: boolean
+      /** 开始时间 HH:mm，如 23:00 */
+      start: string
+      /** 结束时间 HH:mm，如 07:00 */
+      end: string
+    }
   }
   dingtalk?: {
     appKey: string

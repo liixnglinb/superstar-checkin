@@ -41,10 +41,12 @@ async function openAndShoot() {
   await shoot('2-courses')
   await win.webContents.executeJavaScript(`document.querySelector('[data-view="history"]').click()`)
   await shoot('3-history')
+  await win.webContents.executeJavaScript(`document.querySelector('[data-view="logs"]').click()`)
+  await shoot('4-logs')
   await win.webContents.executeJavaScript(`document.querySelector('[data-view="settings"]').click()`)
-  await shoot('4-settings')
+  await shoot('5-settings')
   await win.loadURL(CONSOLE_URL + 'upload?type=qr')
-  await shoot('5-upload')
+  await shoot('6-upload')
   app.exit(0)
 }
 

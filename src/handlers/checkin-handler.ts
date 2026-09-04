@@ -156,4 +156,10 @@ export class CheckinHandler {
   getHistory(): CheckinResult[] {
     return [...this.history].reverse()
   }
+
+  /** 清空签到历史（软件内「清空记录」用） */
+  clearHistory(): void {
+    this.history = []
+    logger.info('签到历史已清空')
+  }
 }

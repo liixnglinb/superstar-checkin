@@ -32,6 +32,16 @@ export interface DingTalkServerOptions {
   allowedOrigin?: string
   /** 控制台首页状态数据提供者（可选） */
   statusProvider?: StatusProvider
+  /** 全量签到历史（导出 CSV 用） */
+  historyProvider?: () => any[]
+  /** 清空签到历史 */
+  clearHistory?: () => void
+  /** 发送测试通知 */
+  sendTestNotify?: () => Promise<void>
+  /** 重新拉取课程列表并重建轮询监听 */
+  refreshCourses?: () => Promise<{ ok: boolean; count: number; message: string }>
+  /** 日志文件路径（软件内日志查看页用） */
+  getLogFile?: () => string
 }
 
 /**
@@ -51,6 +61,11 @@ export class DingTalkServer {
   private token?: string
   private allowedOrigin?: string
   private statusProvider?: StatusProvider
+  private historyProvider?: () => any[]
+  private clearHistory?: () => void
+  private sendTestNotify?: () => Promise<void>
+  private refreshCourses?: () => Promise<{ ok: boolean; count: number; message: string }>
+  private getLogFile?: () => string
 
   constructor(
     private port: number,
@@ -62,6 +77,11 @@ export class DingTalkServer {
     this.token = options.token
     this.allowedOrigin = options.allowedOrigin
     this.statusProvider = options.statusProvider
+    this.historyProvider = options.historyProvider
+    this.clearHistory = options.clearHistory
+    this.sendTestNotify = options.sendTestNotify
+    this.refreshCourses = options.refreshCourses
+    this.getLogFile = options.getLogFile
   }
 
   /**
@@ -99,7 +119,7 @@ export class DingTalkServer {
         return
       }
 
-      // 账号配置保存（首次运行引导：填写账号 → 写 config.yaml → 重启生效）
+      // 账号保存/添加（首次运行引导；已存在同账号则更新密码，否则追加 → 支持多账号）
       if (req.method === 'POST' && req.url === '/api/config') {
         try {
           const body = JSON.parse(await this.readBody(req))
@@ -114,15 +134,214 @@ export class DingTalkServer {
           const existing = fs.existsSync(cfgFile)
             ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {}
             : {}
-          existing.accounts = [{ username, password }]
+          const accounts = Array.isArray(existing.accounts) ? existing.accounts : []
+          const idx = accounts.findIndex((a: any) => String(a.username) === username)
+          let action = '新增'
+          if (idx >= 0) {
+            accounts[idx] = { ...accounts[idx], username, password }
+            action = '更新'
+          } else {
+            accounts.push({ username, password })
+          }
+          existing.accounts = accounts
           fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
-          logger.info(`账号已保存到 ${cfgFile}（用户名: ${username}），重启后生效`)
+          logger.info(`账号已${action}到 ${cfgFile}（用户名: ${username}），当前共 ${accounts.length} 个账号，重启后生效`)
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
-          res.end(JSON.stringify({ ok: true, message: '账号已保存，请重启软件生效' }))
+          res.end(JSON.stringify({ ok: true, message: `账号已${action}（当前 ${accounts.length} 个），重启后生效` }))
         } catch (e: any) {
           logger.error(`保存账号失败: ${e.message}`)
           res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
           res.end(JSON.stringify({ ok: false, message: `保存失败: ${e.message}` }))
+        }
+        return
+      }
+
+      // 删除账号
+      if (req.method === 'POST' && req.url === '/api/accounts/remove') {
+        try {
+          const body = JSON.parse(await this.readBody(req))
+          const username = String(body.username || '').trim()
+          if (!username) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: false, message: '缺少账号' }))
+            return
+          }
+          const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+          const existing = fs.existsSync(cfgFile)
+            ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {}
+            : {}
+          const before = Array.isArray(existing.accounts) ? existing.accounts.length : 0
+          existing.accounts = (Array.isArray(existing.accounts) ? existing.accounts : [])
+            .filter((a: any) => String(a.username) !== username)
+          if (existing.accounts.length === before) {
+            res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: false, message: '未找到该账号' }))
+            return
+          }
+          fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
+          logger.info(`账号已删除: ${username}`)
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, message: '账号已删除，重启后生效' }))
+        } catch (e: any) {
+          logger.error(`删除账号失败: ${e.message}`)
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: `删除失败: ${e.message}` }))
+        }
+        return
+      }
+
+      // 设为主账号（移到数组首位 = 课程轮询监听使用该账号）
+      if (req.method === 'POST' && req.url === '/api/accounts/primary') {
+        try {
+          const body = JSON.parse(await this.readBody(req))
+          const username = String(body.username || '').trim()
+          const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+          const existing = fs.existsSync(cfgFile)
+            ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {}
+            : {}
+          const accounts = Array.isArray(existing.accounts) ? existing.accounts : []
+          const idx = accounts.findIndex((a: any) => String(a.username) === username)
+          if (idx < 0) {
+            res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: false, message: '未找到该账号' }))
+            return
+          }
+          const [acc] = accounts.splice(idx, 1)
+          accounts.unshift(acc)
+          existing.accounts = accounts
+          fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
+          logger.info(`主账号已切换为: ${username}`)
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, message: `已将 ${username} 设为主账号，重启后生效` }))
+        } catch (e: any) {
+          logger.error(`切换主账号失败: ${e.message}`)
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: `切换失败: ${e.message}` }))
+        }
+        return
+      }
+
+      // 运行设置（轮询间隔 / 桌面通知 / 免打扰时段 → 写 config.yaml → 重启生效）
+      if (req.method === 'POST' && req.url === '/api/settings') {
+        try {
+          const body = JSON.parse(await this.readBody(req))
+          const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+          const existing = fs.existsSync(cfgFile)
+            ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {}
+            : {}
+          if (body.pollInterval !== undefined && body.pollInterval !== null && body.pollInterval !== '') {
+            const sec = Number(body.pollInterval)
+            if (sec >= 10 && sec <= 600) {
+              existing.listener = { ...(existing.listener || {}), pollInterval: Math.round(sec * 1000) }
+            }
+          }
+          if (body.desktop !== undefined) {
+            existing.notify = { ...(existing.notify || {}), desktop: !!body.desktop }
+          }
+          if (body.quietEnabled !== undefined || body.quietStart !== undefined || body.quietEnd !== undefined) {
+            existing.notify = {
+              ...(existing.notify || {}),
+              quiet: {
+                enabled: !!body.quietEnabled,
+                start: String(body.quietStart || '23:00'),
+                end: String(body.quietEnd || '07:00'),
+              },
+            }
+          }
+          fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
+          logger.info('运行设置已保存，重启后生效')
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, message: '设置已保存，重启后生效' }))
+        } catch (e: any) {
+          logger.error(`保存设置失败: ${e.message}`)
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: `保存失败: ${e.message}` }))
+        }
+        return
+      }
+
+      // 历史记录：导出 CSV
+      if (req.method === 'GET' && req.url === '/api/history/export') {
+        const rows = this.historyProvider ? this.historyProvider() : []
+        let csv = '\uFEFF时间,课程,类型,结果,账号\n'
+        for (const r of rows) {
+          const cell = (v: any) => `"${String(v ?? '').replace(/"/g, '""').replace(/\n/g, ' ')}"`
+          csv += [cell(r.time || r.timestamp || ''), cell(r.courseName || ''), cell(r.type || ''), cell(r.result || ''), cell(r.accountName || r.account || '')].join(',') + '\n'
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="checkin-history.csv"',
+        })
+        res.end(csv)
+        return
+      }
+
+      // 历史记录：清空
+      if (req.method === 'POST' && req.url === '/api/history/clear') {
+        try {
+          if (this.clearHistory) this.clearHistory()
+          logger.info('签到历史已清空')
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, message: '签到历史已清空' }))
+        } catch (e: any) {
+          logger.error(`清空历史失败: ${e.message}`)
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: `清空失败: ${e.message}` }))
+        }
+        return
+      }
+
+      // 运行日志（软件内查看，默认最近 200 行）
+      if (req.method === 'GET' && req.url?.startsWith('/api/logs')) {
+        try {
+          const url = new URL(req.url, `http://localhost:${this.port}`)
+          const want = Math.min(Number(url.searchParams.get('lines') || 200) || 200, 1000)
+          const file = this.getLogFile ? this.getLogFile() : ''
+          if (!file || !fs.existsSync(file)) {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: true, file: file || '', lines: [], message: '暂无日志文件' }))
+            return
+          }
+          const lines = fs.readFileSync(file, 'utf-8').split(/\r?\n/).filter(Boolean)
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, file, lines: lines.slice(-want) }))
+        } catch (e: any) {
+          logger.error(`读取日志失败: ${e.message}`)
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: `读取日志失败: ${e.message}` }))
+        }
+        return
+      }
+
+      // 测试通知
+      if (req.method === 'POST' && req.url === '/api/notify/test') {
+        try {
+          if (this.sendTestNotify) await this.sendTestNotify()
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, message: '测试通知已发送（免打扰时段内桌面通知不会弹出）' }))
+        } catch (e: any) {
+          logger.error(`测试通知失败: ${e.message}`)
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: `发送失败: ${e.message}` }))
+        }
+        return
+      }
+
+      // 重新拉取课程列表（解决小课程/新课程未出现的问题）
+      if (req.method === 'POST' && req.url === '/api/courses/refresh') {
+        try {
+          if (!this.refreshCourses) {
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: false, message: '课程刷新暂不可用（未配置账号？）' }))
+            return
+          }
+          const r = await this.refreshCourses()
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: !!r.ok, message: r.message, count: r.count || 0 }))
+        } catch (e: any) {
+          logger.error(`刷新课程失败: ${e.message}`)
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: `刷新失败: ${e.message}` }))
         }
         return
       }

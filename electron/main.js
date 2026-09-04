@@ -116,6 +116,18 @@ app.whenReady().then(() => {
     if (mainWindow) mainWindow.close()
   })
   ipcMain.handle('win-is-maximized', () => mainWindow ? mainWindow.isMaximized() : false)
+  // 开机自启（设置页开关；安装版在开始菜单生成快捷方式后可用）
+  ipcMain.handle('auto-launch-get', () => {
+    try { return app.getLoginItemSettings().openAtLogin } catch { return false }
+  })
+  ipcMain.handle('auto-launch-set', (_e, v) => {
+    try {
+      app.setLoginItemSettings({ openAtLogin: !!v, openAsHidden: true })
+      return { ok: true, openAtLogin: !!v }
+    } catch (err) {
+      return { ok: false, message: String(err) }
+    }
+  })
   // 启动签到服务（构建产物，与窗口同进程）
   try {
     require(path.join(__dirname, '..', 'build', 'index.js'))

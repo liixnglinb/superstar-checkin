@@ -11,8 +11,12 @@ export interface Notifier {
  */
 export class NotificationManager {
   private notifiers: Map<string, Notifier> = new Map()
+  private desktopEnabled: boolean
+  private quiet: { enabled: boolean; start: string; end: string }
 
-  constructor(channels: NotifyChannel[]) {
+  constructor(channels: NotifyChannel[], opts: { desktop?: boolean; quiet?: { enabled: boolean; start: string; end: string } } = {}) {
+    this.desktopEnabled = opts.desktop !== false
+    this.quiet = opts.quiet || { enabled: false, start: '23:00', end: '07:00' }
     for (const ch of channels) {
       if (!ch.enabled) continue
 
@@ -32,12 +36,35 @@ export class NotificationManager {
       }
     }
 
+    if (this.desktopEnabled) {
+      this.notifiers.set('desktop', new DesktopNotifier())
+      logger.info('桌面通知已启用（免打扰: ' + (this.quiet.enabled ? `${this.quiet.start}~${this.quiet.end}` : '关闭') + '）')
+    }
+
     logger.info(`已启用 ${this.notifiers.size} 个通知通道`)
   }
 
+  /** 当前是否处于免打扰时段 */
+  inQuietHours(now = new Date()): boolean {
+    if (!this.quiet.enabled) return false
+    const cur = now.getHours() * 60 + now.getMinutes()
+    const [sh, sm] = (this.quiet.start || '23:00').split(':').map(Number)
+    const [eh, em] = (this.quiet.end || '07:00').split(':').map(Number)
+    const start = sh * 60 + (sm || 0)
+    const end = eh * 60 + (em || 0)
+    if (start === end) return false
+    return start < end ? (cur >= start && cur < end) : (cur >= start || cur < end)
+  }
+
   async notify(title: string, content: string): Promise<void> {
+    // 免打扰时段内不弹桌面通知（pushplus/bark/钉钉/邮件等外部通道不受影响）
+    const quietNow = this.inQuietHours()
     const results = await Promise.allSettled(
       Array.from(this.notifiers.entries()).map(async ([name, notifier]) => {
+        if (name === 'desktop' && quietNow) {
+          logger.debug(`免打扰时段，跳过桌面通知: ${title}`)
+          return
+        }
         try {
           await notifier.send(title, content)
           logger.debug(`${name} 通知已发送: ${title}`)
@@ -103,6 +130,24 @@ class DingTalkNotifier implements Notifier {
       msgtype: 'markdown',
       markdown: { title, text: `### ${title}\n\n${content}` },
     })
+  }
+}
+
+// ============ 桌面通知（Electron 内置） ============
+
+class DesktopNotifier implements Notifier {
+  async send(title: string, content: string): Promise<void> {
+    // 仅 Electron 主进程环境可用；纯 Node 运行（如 SEA 单文件版）自动跳过
+    try {
+      if (!process.versions.electron) return
+      const electron = require('electron') as any
+      const Notification = electron.Notification
+      if (!Notification || !Notification.isSupported()) return
+      const n = new Notification({ title, body: content, silent: false })
+      n.show()
+    } catch (e: any) {
+      logger.debug(`桌面通知不可用: ${e.message}`)
+    }
   }
 }
 

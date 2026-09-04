@@ -17,6 +17,7 @@ export interface ConsoleStatus {
   accounts?: Array<{ username: string; name?: string; schoolname?: string }>
   courses?: Array<{ courseName: string; courseId: number; classId: number }>
   watchCourses?: string[]
+  courseStats?: Array<{ course: string; success: number; fail: number }>
   recent?: Array<{ time: string; courseName: string; type: string; result: string; accountName: string; timestamp?: number }>
   recordCount?: number
   successCount?: number
@@ -24,6 +25,8 @@ export interface ConsoleStatus {
   cookieValid?: boolean
   imConnected?: boolean
   qrPending?: boolean
+  notifyDesktop?: boolean
+  quiet?: { enabled: boolean; start: string; end: string }
 }
 
 const ICONS = {
@@ -49,6 +52,10 @@ const ICONS = {
   winClose: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1"><path d="M2.8 2.8l6.4 6.4M9.2 2.8l-6.4 6.4"/></svg>',
   location: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>',
   refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
+  log: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h16v18H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+  download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
+  power: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>',
 }
 
 function esc(s: any): string {
@@ -160,6 +167,7 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
       <div class="stat-label">签到失败</div>
     </div>`
 
+  const quiet = status.quiet || { enabled: false, start: '23:00', end: '07:00' }
   const settingsRows = `
     <div class="set-row"><span class="set-label">监听模式</span><span class="set-value">${esc(modeText(mode))}</span></div>
     <div class="set-row"><span class="set-label">轮询间隔</span><span class="set-value">${status.pollInterval ? status.pollInterval / 1000 + ' 秒' : '—'}</span></div>
@@ -167,6 +175,70 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
     <div class="set-row"><span class="set-label">登录状态</span><span class="set-value">${status.cookieValid === false ? '<span class="pill pill-err">Cookie 失效</span>' : '<span class="pill pill-ok">Cookie 有效</span>'}</span></div>
     <div class="set-row"><span class="set-label">IM 通道</span><span class="set-value">${status.imConnected ? '<span class="pill pill-ok">已连接</span>' : '<span class="pill pill-warn">不可用（轮询兜底）</span>'}</span></div>
     <div class="set-row"><span class="set-label">配置文件</span><span class="set-value cell-mono">config.yaml（软件同目录，修改后重启生效）</span></div>`
+
+  // 运行设置表单（保存到 config.yaml，重启生效）
+  const settingsForm = `
+    <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;max-width:560px;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setPoll" style="width:110px">轮询间隔（秒）</label>
+        <input class="field-input" id="setPoll" type="number" min="10" max="600" value="${Math.round((status.pollInterval || 30000) / 1000)}" style="width:120px">
+        <span class="field-hint" style="line-height:1.5">10~600，越小发现签到越快，越频繁越可能被风控（默认 30）</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setDesktop" style="width:110px">桌面通知</label>
+        <button class="switch ${status.notifyDesktop === false ? '' : 'on'}" id="setDesktop" type="button" role="switch"><span class="knob"></span></button>
+        <span class="field-hint" style="line-height:1.5">签到成功/失败/二维码待签时弹出系统通知</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setQuiet" style="width:110px">免打扰时段</label>
+        <button class="switch ${quiet.enabled ? 'on' : ''}" id="setQuiet" type="button" role="switch"><span class="knob"></span></button>
+        <input class="field-input" id="setQuietStart" type="time" value="${esc(quiet.start)}" style="width:110px">
+        <span class="field-hint">至</span>
+        <input class="field-input" id="setQuietEnd" type="time" value="${esc(quiet.end)}" style="width:110px">
+        <span class="field-hint" style="line-height:1.5">期间不弹桌面通知，签到照常进行</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setAutoLaunch" style="width:110px">开机自启</label>
+        <button class="switch" id="setAutoLaunch" type="button" role="switch"><span class="knob"></span></button>
+        <span class="field-hint" style="line-height:1.5">开机后自动在后台运行，保证签到不中断</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px">
+        <button class="btn btn-primary" id="settingsSaveBtn">保存设置</button>
+        <button class="btn btn-ghost" id="notifyTestBtn">${ICONS.bell}<span>发送测试通知</span></button>
+        <span class="cfg-msg" id="settingsMsg"></span>
+      </div>
+    </div>`
+
+  // 账号管理：列表 + 添加表单
+  const accountRows2 = accounts.length
+    ? accounts.map((a, i) => `
+      <div class="acct-row">
+        <span class="acct-avatar">${esc((a.name || a.username || '?').slice(0, 1))}</span>
+        <div class="acct-info">
+          <div class="acct-name">${esc(a.name || a.username)}${i === 0 ? ' <span class="pill pill-ok">主账号</span>' : ''}</div>
+          <div class="acct-sub">${esc(a.schoolname || '')} · ${esc(a.username)}</div>
+        </div>
+        ${i === 0 ? '' : `<button class="btn btn-ghost btn-sm" data-primary="${esc(a.username)}">设为主账号</button>`}
+        <button class="btn btn-ghost btn-sm btn-danger" data-remove="${esc(a.username)}">${ICONS.trash}<span>删除</span></button>
+      </div>`).join('')
+    : `<div class="empty"><p>未配置账号</p><p class="empty-sub">添加学习通账号后，软件会用它自动签到（支持多账号，全部账号都会签到）</p></div>`
+
+  const accountManageBox = `
+    <div id="accountList">${accountRows2}</div>
+    <div style="padding:16px 18px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:12px;max-width:520px;box-sizing:border-box">
+      <div style="font-size:12.5px;font-weight:600;color:var(--text-2)">添加账号</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <input class="field-input" id="cfgUsername" type="text" placeholder="学习通账号（手机号）" autocomplete="off" style="width:100%">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <input class="field-input" id="cfgPassword" type="password" placeholder="密码" style="width:100%">
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="cfgSaveBtn">添加账号</button>
+        <span class="cfg-msg" id="cfgMsg"></span>
+      </div>
+      <p class="field-hint">添加/删除/切换主账号后需重启软件生效。第一个账号（主账号）负责课程轮询监听，所有账号都会自动签到。账号保存在 config.yaml，请妥善保管。</p>
+    </div>`
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -293,6 +365,29 @@ tr:hover td{background:#FCFAF8}
 .watch-toggle.on{background:var(--accent-weak);border-color:var(--accent);color:var(--accent)}
 .pill-off{color:var(--text-3);background:var(--surface-2)}
 .section-foot{display:flex;align-items:center;gap:14px;padding:12px 18px}
+/* ===== 开关 ===== */
+.switch{width:44px;height:24px;border-radius:999px;border:1px solid var(--border);background:var(--surface-2);position:relative;cursor:pointer;transition:background .15s ease,border-color .15s ease;flex-shrink:0;padding:0}
+.switch .knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .15s ease}
+.switch.on{background:var(--accent);border-color:var(--accent)}
+.switch.on .knob{left:22px}
+/* ===== 小按钮 / 危险按钮 ===== */
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-danger{color:var(--err);border-color:#F0D4D4}
+.btn-danger:hover{background:#FBEBEB}
+/* ===== 日志视图 ===== */
+.log-box{background:#1B1F24;color:#D7DDE3;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.75;padding:14px 18px;max-height:56vh;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+.log-box::-webkit-scrollbar{width:10px}
+.log-box::-webkit-scrollbar-thumb{background:#3A4048;border-radius:5px}
+.log-line{padding:1px 0}
+.log-line.err{color:#FF8A80}
+.log-line.warn{color:#FFD54F}
+.log-line.ok{color:#69F0AE}
+.log-empty{color:#6B7280;text-align:center;padding:24px 0}
+/* ===== 关于 ===== */
+.about-box{padding:6px 18px}
+.about-line{display:flex;gap:14px;padding:9px 0;font-size:13px;border-bottom:1px solid var(--border);line-height:1.6}
+.about-line:last-child{border-bottom:none}
+.about-key{width:56px;flex-shrink:0;color:var(--text-3);font-size:12.5px}
 /* ===== 二维码签到弹窗 ===== */
 .modal-mask{position:fixed;inset:0;z-index:990;display:flex;align-items:center;justify-content:center;background:rgba(33,27,23,.42)}
 .modal{width:440px;max-width:92vw;background:var(--surface);border-radius:16px;box-shadow:0 18px 48px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden;animation:modalIn .16s ease}
@@ -346,6 +441,7 @@ tr:hover td{background:#FCFAF8}
       <button class="nav-item active" data-view="overview">${ICONS.home}<span>总览</span></button>
       <button class="nav-item" data-view="courses">${ICONS.courses}<span>课程</span></button>
       <button class="nav-item" data-view="history">${ICONS.history}<span>历史记录</span></button>
+      <button class="nav-item" data-view="logs">${ICONS.log}<span>日志</span></button>
       <button class="nav-item" data-view="settings">${ICONS.settings}<span>设置</span></button>
     </nav>
     <div class="side-foot">
@@ -383,12 +479,23 @@ tr:hover td{background:#FCFAF8}
       <section class="view" data-view="courses">
         <div class="section">
           <div class="section-head"><span class="section-title">监控课程</span><span class="section-more" id="courseCount">${courses.length} 门 · 轮询发现签到活动</span></div>
-          <div class="watch-bar">勾选要监听的课程（默认全部监听），保存后重启软件生效</div>
+          <div class="watch-bar">勾选要监听的课程（默认全部监听），保存后重启软件生效 · 新课程/小课程没出现时点「重新拉取课程列表」</div>
           <table>
             <thead><tr><th>课程名称</th><th>Course ID</th><th>Class ID</th><th>状态</th><th>监听</th></tr></thead>
             <tbody id="coursesBody">${courseRows}</tbody>
           </table>
-          <div class="section-foot"><button class="btn btn-ghost" id="watchSaveBtn">保存监听设置</button><span class="cfg-msg" id="watchMsg"></span></div>
+          <div class="section-foot">
+            <button class="btn btn-ghost" id="watchSaveBtn">保存监听设置</button>
+            <button class="btn btn-ghost" id="refreshCoursesBtn">${ICONS.refresh}<span>重新拉取课程列表</span></button>
+            <span class="cfg-msg" id="watchMsg"></span>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><span class="section-title">课程签到统计</span><span class="section-more">按历史记录实时统计</span></div>
+          <table>
+            <thead><tr><th>课程</th><th>签到成功</th><th>签到失败</th><th>成功率</th></tr></thead>
+            <tbody id="courseStatsBody"></tbody>
+          </table>
         </div>
       </section>
 
@@ -400,6 +507,23 @@ tr:hover td{background:#FCFAF8}
             <thead><tr><th>时间</th><th>课程</th><th>类型</th><th>结果</th></tr></thead>
             <tbody id="historyBody">${recentRows}</tbody>
           </table>
+          <div class="section-foot">
+            <a class="btn btn-ghost" href="/api/history/export" download="checkin-history.csv">${ICONS.download}<span>导出 CSV</span></a>
+            <button class="btn btn-ghost btn-danger" id="clearHistoryBtn">${ICONS.trash}<span>清空记录</span></button>
+            <span class="cfg-msg" id="historyMsg"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 日志 -->
+      <section class="view" data-view="logs">
+        <div class="section">
+          <div class="section-head"><span class="section-title">运行日志</span><span class="section-more" id="logFile">自动刷新 · 最近 200 行</span></div>
+          <div class="log-box" id="logBox"><div class="log-empty">加载中…</div></div>
+          <div class="section-foot">
+            <button class="btn btn-ghost" id="logRefreshBtn">${ICONS.refresh}<span>刷新日志</span></button>
+            <span class="cfg-msg" id="logMsg"></span>
+          </div>
         </div>
       </section>
 
@@ -408,24 +532,11 @@ tr:hover td{background:#FCFAF8}
         <div class="section">
           <div class="section-head"><span class="section-title">运行配置</span></div>
           ${settingsRows}
+          ${settingsForm}
         </div>
         <div class="section">
-          <div class="section-head"><span class="section-title">账号配置</span><span class="section-more">首次使用需填写学习通账号</span></div>
-          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;max-width:520px;box-sizing:border-box">
-            <div style="display:flex;flex-direction:column;gap:6px">
-              <label class="field-label" for="cfgUsername">学习通账号（手机号）</label>
-              <input class="field-input" id="cfgUsername" type="text" placeholder="请输入学习通账号" autocomplete="off" style="width:100%">
-            </div>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              <label class="field-label" for="cfgPassword">密码</label>
-              <input class="field-input" id="cfgPassword" type="password" placeholder="请输入密码" style="width:100%">
-            </div>
-            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-              <button class="btn btn-primary" id="cfgSaveBtn">保存账号</button>
-              <span class="cfg-msg" id="cfgMsg"></span>
-            </div>
-            <p class="field-hint">保存后需重启软件生效。账号保存在软件目录 config.yaml 中，请妥善保管，勿分享包含账号的软件目录。</p>
-          </div>
+          <div class="section-head"><span class="section-title">账号管理</span><span class="section-more">支持多账号，全部账号都会自动签到</span></div>
+          ${accountManageBox}
         </div>
         <div class="section">
           <div class="section-head"><span class="section-title">支持的签到方式</span></div>
@@ -454,6 +565,14 @@ tr:hover td{background:#FCFAF8}
           </div>
           <div style="padding:2px 18px 14px;font-size:12px;color:var(--text-3);line-height:1.7">
             也可点击右上角「二维码签到」按钮，或手机在同一 Wi-Fi 下访问 <span class="cell-mono">http://电脑IP:${esc(String(status.port || '3456'))}/upload?type=qr</span> 上传。签到失败会自动重试，检测到拍照/手势类签到会推送提醒（请在学习通 APP 手动完成）。
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><span class="section-title">关于</span></div>
+          <div class="about-box">
+            <div class="about-line"><span class="about-key">版本</span><span>学习通自动签到 v${esc(status.version || '3.1')}</span></div>
+            <div class="about-line"><span class="about-key">仓库</span><span class="cell-mono">github.com/liixnglinb/superstar-checkin</span></div>
+            <div class="about-line"><span class="about-key">说明</span><span>仅用于个人学习场景的自动签到辅助，请遵守学校考勤规定。</span></div>
           </div>
         </div>
       </section>
@@ -487,13 +606,14 @@ tr:hover td{background:#FCFAF8}
 
 <script>
 (function(){
-  var views=['overview','courses','history','settings']
-  var titles={overview:'总览',courses:'课程',history:'历史记录',settings:'设置'}
+  var views=['overview','courses','history','logs','settings']
+  var titles={overview:'总览',courses:'课程',history:'历史记录',logs:'运行日志',settings:'设置'}
   function show(v){
     if(views.indexOf(v)<0)v='overview'
     document.querySelectorAll('.view').forEach(function(el){el.classList.toggle('active',el.dataset.view===v)})
     document.querySelectorAll('.nav-item').forEach(function(el){el.classList.toggle('active',el.dataset.view===v)})
     document.getElementById('pageTitle').textContent=titles[v]
+    if(v==='logs')loadLogs()
   }
   document.getElementById('nav').addEventListener('click',function(e){
     var btn=e.target.closest('.nav-item');if(!btn)return
@@ -542,6 +662,19 @@ tr:hover td{background:#FCFAF8}
     }
     var cc=document.getElementById('courseCount')
     if(cc)cc.textContent=(s.courses||[]).length+' 门 · 轮询发现签到活动'
+    // 课程签到统计
+    var csb=document.getElementById('courseStatsBody')
+    if(csb){
+      var stats=s.courseStats||[]
+      csb.innerHTML=stats.length
+        ? stats.map(function(st){
+            var total=st.success+st.fail
+            var rate=total?Math.round(st.success/total*100):0
+            var rc=rate>=90?'#178A5B':(rate>=60?'#B7791F':'#D64545')
+            return '<tr><td class="cell-main">'+esc(st.course)+'</td><td class="cell-sub" style="color:#178A5B">'+st.success+'</td><td class="cell-sub" style="color:'+(st.fail?'#D64545':'#9A8B80')+'">'+st.fail+'</td><td class="cell-sub" style="color:'+rc+';font-weight:600">'+rate+'%</td></tr>'
+          }).join('')
+        : '<tr><td colspan="4" class="cell-empty">暂无统计数据（产生签到记录后显示）</td></tr>'
+    }
   }
   function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
   function fmtTime(ts){if(!ts)return '—';var d=new Date(ts),n=new Date();var hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');if(d.toDateString()===n.toDateString())return '今天 '+hm;var y=new Date(n.getTime()-86400000);if(d.toDateString()===y.toDateString())return '昨天 '+hm;return (d.getMonth()+1)+'月'+d.getDate()+'日 '+hm}
@@ -593,10 +726,10 @@ tr:hover td{background:#FCFAF8}
       .then(function(d){
         msg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||(d.ok?'已保存':'保存失败'))
         msg.style.color=d.ok?'#0E7C66':'#B42318'
-        saveBtn.disabled=false;saveBtn.textContent='保存账号'
+        saveBtn.disabled=false;saveBtn.textContent='添加账号'
         if(d.ok)setTimeout(function(){location.reload()},1500)
       })
-      .catch(function(){msg.textContent='❌ 保存失败，请重试';msg.style.color='#B42318';saveBtn.disabled=false;saveBtn.textContent='保存账号'})
+      .catch(function(){msg.textContent='❌ 保存失败，请重试';msg.style.color='#B42318';saveBtn.disabled=false;saveBtn.textContent='添加账号'})
   })
   // 自绘标题栏：窗口控制（最小化/最大化/关闭）
   var wc=window.winCtl
@@ -666,6 +799,154 @@ tr:hover td{background:#FCFAF8}
       })
       .catch(function(){msg.textContent='❌ 保存失败，请重试';msg.style.color='#B42318';watchSaveBtn.disabled=false;watchSaveBtn.textContent='保存监听设置'})
   })
+
+  // ===== 账号管理（设为主账号 / 删除） =====
+  var accountList=document.getElementById('accountList')
+  if(accountList)accountList.addEventListener('click',function(e){
+    var pBtn=e.target.closest('[data-primary]')
+    var dBtn=e.target.closest('[data-remove]')
+    var msg=document.getElementById('cfgMsg')
+    if(pBtn){
+      var un=pBtn.getAttribute('data-primary')
+      pBtn.disabled=true
+      fetch('/api/accounts/primary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:un})})
+        .then(function(r){return r.json()})
+        .then(function(d){
+          msg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||'操作失败')
+          msg.style.color=d.ok?'#178A5B':'#B42318'
+          if(d.ok)setTimeout(function(){location.reload()},1200)
+        })
+        .catch(function(){msg.textContent='❌ 操作失败';msg.style.color='#B42318';pBtn.disabled=false})
+      return
+    }
+    if(dBtn){
+      var un2=dBtn.getAttribute('data-remove')
+      if(!confirm('确定删除账号 '+un2+' 吗？'))return
+      dBtn.disabled=true
+      fetch('/api/accounts/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:un2})})
+        .then(function(r){return r.json()})
+        .then(function(d){
+          msg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||'操作失败')
+          msg.style.color=d.ok?'#178A5B':'#B42318'
+          if(d.ok)setTimeout(function(){location.reload()},1200)
+        })
+        .catch(function(){msg.textContent='❌ 操作失败';msg.style.color='#B42318';dBtn.disabled=false})
+    }
+  })
+
+  // ===== 历史记录：清空 =====
+  var clearHistoryBtn=document.getElementById('clearHistoryBtn')
+  if(clearHistoryBtn)clearHistoryBtn.addEventListener('click',function(){
+    if(!confirm('确定清空全部签到记录吗？此操作不可恢复。'))return
+    var msg=document.getElementById('historyMsg')
+    clearHistoryBtn.disabled=true
+    fetch('/api/history/clear',{method:'POST'})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        msg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||'操作失败')
+        msg.style.color=d.ok?'#178A5B':'#B42318'
+        if(d.ok)setTimeout(function(){location.reload()},800)
+      })
+      .catch(function(){msg.textContent='❌ 清空失败';msg.style.color='#B42318';clearHistoryBtn.disabled=false})
+  })
+
+  // ===== 运行设置（轮询间隔 / 桌面通知 / 免打扰时段） =====
+  var settingsSaveBtn=document.getElementById('settingsSaveBtn')
+  if(settingsSaveBtn)settingsSaveBtn.addEventListener('click',function(){
+    var poll=document.getElementById('setPoll').value
+    var desktop=document.getElementById('setDesktop').classList.contains('on')
+    var quietOn=document.getElementById('setQuiet').classList.contains('on')
+    var qs=document.getElementById('setQuietStart').value
+    var qe=document.getElementById('setQuietEnd').value
+    var msg=document.getElementById('settingsMsg')
+    settingsSaveBtn.disabled=true;settingsSaveBtn.textContent='保存中…'
+    fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pollInterval:poll,desktop:desktop,quietEnabled:quietOn,quietStart:qs,quietEnd:qe})})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        msg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||'保存失败')
+        msg.style.color=d.ok?'#178A5B':'#B42318'
+        settingsSaveBtn.disabled=false;settingsSaveBtn.textContent='保存设置'
+        if(d.ok)setTimeout(function(){location.reload()},1200)
+      })
+      .catch(function(){msg.textContent='❌ 保存失败';msg.style.color='#B42318';settingsSaveBtn.disabled=false;settingsSaveBtn.textContent='保存设置'})
+  })
+  function bindSwitch(id){
+    var el=document.getElementById(id)
+    if(el)el.addEventListener('click',function(){el.classList.toggle('on')})
+  }
+  bindSwitch('setDesktop');bindSwitch('setQuiet')
+  // 测试通知
+  var notifyTestBtn=document.getElementById('notifyTestBtn')
+  if(notifyTestBtn)notifyTestBtn.addEventListener('click',function(){
+    var msg=document.getElementById('settingsMsg')
+    msg.textContent='正在发送…';msg.style.color='#0E7C66'
+    fetch('/api/notify/test',{method:'POST'})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        msg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||'发送失败')
+        msg.style.color=d.ok?'#178A5B':'#B42318'
+      })
+      .catch(function(){msg.textContent='❌ 发送失败';msg.style.color='#B42318'})
+  })
+  // 开机自启
+  var alBtn=document.getElementById('setAutoLaunch')
+  if(alBtn&&window.appCtl){
+    window.appCtl.getAutoLaunch().then(function(v){alBtn.classList.toggle('on',!!v)}).catch(function(){})
+    alBtn.addEventListener('click',function(){
+      var next=!alBtn.classList.contains('on')
+      alBtn.classList.toggle('on',next)
+      window.appCtl.setAutoLaunch(next).then(function(r){
+        if(!r||!r.ok){
+          alBtn.classList.toggle('on',!next)
+          var msg=document.getElementById('settingsMsg')
+          msg.textContent='❌ '+(r&&r.message||'设置失败，请安装版重试')
+          msg.style.color='#B42318'
+        }
+      }).catch(function(){alBtn.classList.toggle('on',!next)})
+    })
+  }
+
+  // ===== 重新拉取课程列表 =====
+  var refreshCoursesBtn=document.getElementById('refreshCoursesBtn')
+  if(refreshCoursesBtn)refreshCoursesBtn.addEventListener('click',function(){
+    var msg=document.getElementById('watchMsg')
+    refreshCoursesBtn.disabled=true;refreshCoursesBtn.textContent='正在拉取…'
+    fetch('/api/courses/refresh',{method:'POST'})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        msg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||'刷新失败')
+        msg.style.color=d.ok?'#178A5B':'#B42318'
+        refreshCoursesBtn.disabled=false;refreshCoursesBtn.textContent='重新拉取课程列表'
+        if(d.ok)setTimeout(function(){location.reload()},1500)
+      })
+      .catch(function(){msg.textContent='❌ 刷新失败';msg.style.color='#B42318';refreshCoursesBtn.disabled=false;refreshCoursesBtn.textContent='重新拉取课程列表'})
+  })
+
+  // ===== 运行日志查看 =====
+  function loadLogs(){
+    var box=document.getElementById('logBox')
+    if(!box)return
+    fetch('/api/logs?lines=200')
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(!d.ok||!d.lines){box.innerHTML='<div class="log-empty">'+esc(d.message||'暂无日志')+'</div>';return}
+        var lf=document.getElementById('logFile')
+        if(lf)lf.textContent=(d.file||'')+' · 最近 '+d.lines.length+' 行'
+        if(!d.lines.length){box.innerHTML='<div class="log-empty">暂无日志</div>';return}
+        box.innerHTML=d.lines.map(function(line){
+          var cls=''
+          if(/\[ERROR\]/.test(line))cls='err'
+          else if(/\[WARN\]/.test(line))cls='warn'
+          else if(/\[OK\]/.test(line))cls='ok'
+          return '<div class="log-line '+cls+'">'+esc(line)+'</div>'
+        }).join('')
+        box.scrollTop=box.scrollHeight
+      })
+      .catch(function(){box.innerHTML='<div class="log-empty">日志读取失败</div>'})
+  }
+  var logRefreshBtn=document.getElementById('logRefreshBtn')
+  if(logRefreshBtn)logRefreshBtn.addEventListener('click',loadLogs)
+  loadLogs()
 
   // ===== 二维码签到弹窗（拖入/选择图片即签） =====
   var qrModal=document.getElementById('qrModal')

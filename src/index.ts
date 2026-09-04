@@ -82,7 +82,30 @@ async function main() {
     try {
       const history = checkinHandler.getHistory()
       const okRe = /成功|✅|已签到/
-      const successCount = history.filter((r: any) => okRe.test(r.result)).length
+      const successCount = history.filter((r: any) => okRe.test(r.message || r.result)).length
+      // 课程签到统计（每门课成功/失败次数，供课程页展示）
+      const statsMap = new Map<string, { success: number; fail: number }>()
+      for (const r of history) {
+        const k = r.courseName || '未知课程'
+        const e = statsMap.get(k) || { success: 0, fail: 0 }
+        if (okRe.test((r as any).message || (r as any).result)) e.success++
+        else e.fail++
+        statsMap.set(k, e)
+      }
+      const courseStats = Array.from(statsMap.entries()).map(([course, s]) => ({
+        course,
+        success: s.success,
+        fail: s.fail,
+      }))
+      // 补全前端需要展示的字段（result/timestamp/accountName）
+      const recent = history.slice(0, 10).map((r: any) => ({
+        time: r.time || '',
+        courseName: r.courseName || '',
+        type: r.type || '',
+        result: r.message || r.result || '',
+        accountName: r.accountName || r.account || '',
+        timestamp: r.timestamp || Date.now(),
+      }))
       return {
         ...base,
         accounts: config.accounts.map((a: any) => {
@@ -91,17 +114,47 @@ async function main() {
         }),
         courses,
         watchCourses: config.watchCourses || [],
-        recent: history.slice(0, 10),
+        courseStats,
+        recent,
         recordCount: history.length,
         successCount,
         failCount: history.length - successCount,
         cookieValid: !!primaryMeta.cookie,
         imConnected: watchdog.imConnected,
         qrPending: hasPendingQr(),
+        notifyDesktop: config.notify.desktop !== false,
+        quiet: config.notify.quiet,
       }
     } catch (e) {
       // 业务模块尚未初始化完成（服务刚启动被立即访问），返回基础信息
       return base
+    }
+  }
+
+  // 重新拉取课程列表：小课程/新课程未出现时手动刷新，并重建轮询监听
+  async function refreshCourses(): Promise<{ ok: boolean; count: number; message: string }> {
+    if (!config.accounts.length || !primaryMeta.cookie) {
+      return { ok: false, count: 0, message: '未配置账号，无法刷新课程列表' }
+    }
+    try {
+      const fresh = await getCourseList(primaryMeta.cookie)
+      courses = fresh
+      applyWatchFilter()
+      if (pollListener) pollListener.stop()
+      if (config.listener.mode === 'poll' || config.listener.mode === 'hybrid') {
+        const pl = new PollListener(config.listener.pollInterval)
+        pl.onActivity((aid, courseId, classId, courseName) => {
+          watchdog.lastActivityAt = Date.now()
+          processCheckin(aid, courseId, classId, courseName)
+        })
+        pl.start(primaryMeta.cookie, watchedCourses)
+        pollListener = pl
+      }
+      logger.success(`课程列表已刷新: ${fresh.length} 门，监听 ${watchedCourses.length} 门`)
+      return { ok: true, count: fresh.length, message: `已刷新课程列表（${fresh.length} 门），监听 ${watchedCourses.length} 门` }
+    } catch (e: any) {
+      logger.error(`刷新课程列表失败: ${e.message}`)
+      return { ok: false, count: 0, message: `刷新失败: ${e.message}` }
     }
   }
 
@@ -114,13 +167,22 @@ async function main() {
       token: config.web?.token,
       allowedOrigin: config.web?.allowedOrigin,
       statusProvider: getConsoleStatus,
+      historyProvider: () => checkinHandler.getHistory(),
+      clearHistory: () => checkinHandler.clearHistory(),
+      sendTestNotify: () =>
+        notifier.notify('✅ 测试通知', '通知通道工作正常\n（免打扰时段内桌面通知不会弹出）').catch(() => {}),
+      refreshCourses,
+      getLogFile: () => config.log.file || '',
     })
     dtServer.start()
     logger.info(`上传页服务已启动: http://0.0.0.0:${dtPort}`)
   }
 
   // 3. 通知管理器（先初始化，供账号刷新失败等回调引用，避免 TDZ）
-  const notifier = new NotificationManager(config.notify.channels)
+  const notifier = new NotificationManager(config.notify.channels, {
+    desktop: config.notify.desktop,
+    quiet: config.notify.quiet,
+  })
 
   // 4. 账号管理（无账号时以"未配置"状态启动，软件内引导填写；登录失败不致命：上传页/二维码通道仍应可用）
   const accountManager = new AccountManager(config.accounts)
@@ -144,11 +206,11 @@ async function main() {
   // 5. 签到处理器
   const checkinHandler = new CheckinHandler(config, accountManager)
 
-  // 6. 获取课程列表
+  // 6. 获取课程列表（courses/watchedCourses 可被「重新拉取课程列表」运行时刷新）
   const primaryMeta = config.accounts.length
     ? accountManager.getMeta(config.accounts[0].username)
     : { cookie: '', name: '', schoolname: '', uid: 0, fid: '' }
-  const courses = config.accounts.length
+  let courses = config.accounts.length
     ? await getCourseList(primaryMeta.cookie).catch((e: any) => {
         logger.error(`获取课程列表失败（不影响上传页）: ${e.message}`)
         return []
@@ -156,13 +218,17 @@ async function main() {
     : []
 
   // 按「监听课程」配置过滤：watchCourses 为空 = 监听全部；否则只监听勾选的课程
-  const watchSet = new Set((config.watchCourses || []).map((c: any) => String(c)))
-  const watchedCourses = watchSet.size > 0
-    ? courses.filter(c => watchSet.has(String(c.courseId)))
-    : courses
-  if (watchSet.size > 0) {
-    logger.info(`按监听配置过滤课程: ${courses.length} 门 → 监听 ${watchedCourses.length} 门`)
+  let watchedCourses: typeof courses = []
+  function applyWatchFilter() {
+    const watchSet = new Set((config.watchCourses || []).map((c: any) => String(c)))
+    watchedCourses = watchSet.size > 0
+      ? courses.filter(c => watchSet.has(String(c.courseId)))
+      : courses
+    if (watchSet.size > 0) {
+      logger.info(`按监听配置过滤课程: ${courses.length} 门 → 监听 ${watchedCourses.length} 门`)
+    }
   }
+  applyWatchFilter()
 
   // 看门狗状态
   const watchdog = {
@@ -279,13 +345,15 @@ async function main() {
     }
   }
 
+  // 轮询监听器（模块级可变：支持「重新拉取课程列表」时重建）
+  let pollListener: PollListener | null = null
   if (config.listener.mode === 'poll' || config.listener.mode === 'hybrid') {
     if (courses.length === 0) {
       logger.error('课程列表为空，轮询监听器将以空列表启动（无法发现任何签到），请检查登录/Cookie 是否正常')
       await notifier.notify('⚠️ 轮询监听异常', '课程列表为空，轮询无法发现签到活动，请检查登录状态')
         .catch(() => {})
     }
-    const pollListener = new PollListener(config.listener.pollInterval)
+    pollListener = new PollListener(config.listener.pollInterval)
     pollListener.onActivity((aid, courseId, classId, courseName) => {
       watchdog.lastActivityAt = Date.now()
       processCheckin(aid, courseId, classId, courseName)

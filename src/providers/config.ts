@@ -33,7 +33,11 @@ const DEFAULT_CONFIG: Partial<AppConfig> = {
     locations: [],
     providers: {},
   },
-  notify: { channels: [] },
+  notify: {
+    channels: [],
+    desktop: true,
+    quiet: { enabled: false, start: '23:00', end: '07:00' },
+  },
   dingtalk: {
     appKey: '',
     appSecret: '',
