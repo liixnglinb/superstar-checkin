@@ -62,6 +62,7 @@ const ICONS = {
   download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
   power: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5.5 3.8 9.7 8 11 4.2-1.3 8-5.5 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg>',
 }
 
 function esc(s: any): string {
@@ -417,6 +418,14 @@ tr:hover td{background:#FCFAF8}
 .about-line{display:flex;gap:14px;padding:9px 0;font-size:13px;border-bottom:1px solid var(--border);line-height:1.6}
 .about-line:last-child{border-bottom:none}
 .about-key{width:56px;flex-shrink:0;color:var(--text-3);font-size:12.5px}
+/* ===== 免责声明弹窗 ===== */
+.disclaimer-modal{max-width:680px;width:min(680px,92vw)}
+.disclaimer-scroll{max-height:56vh;overflow-y:auto;padding:2px 4px 2px 0;line-height:1.8;font-size:13px;color:var(--text-1)}
+.disclaimer-scroll::-webkit-scrollbar{width:10px}
+.disclaimer-scroll::-webkit-scrollbar-thumb{background:#D8CFC6;border-radius:5px}
+.disclaimer-scroll h3{font-size:15.5px;font-weight:700;margin:0 0 10px;color:var(--text-1)}
+.disclaimer-scroll h4{font-size:13.5px;font-weight:600;margin:14px 0 6px;color:var(--accent-deep,#B45309)}
+.disclaimer-scroll p{margin:4px 0;text-align:justify}
 /* ===== 二维码签到弹窗 ===== */
 .modal-mask{position:fixed;inset:0;z-index:990;display:flex;align-items:center;justify-content:center;background:rgba(33,27,23,.42)}
 .modal{width:440px;max-width:92vw;background:var(--surface);border-radius:16px;box-shadow:0 18px 48px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden;animation:modalIn .16s ease}
@@ -602,6 +611,7 @@ tr:hover td{background:#FCFAF8}
             <div class="about-line"><span class="about-key">版本</span><span>学习通自动签到 v${esc(status.version || '3.1')}</span></div>
             <div class="about-line"><span class="about-key">仓库</span><span class="cell-mono">github.com/liixnglinb/superstar-checkin</span></div>
             <div class="about-line"><span class="about-key">说明</span><span>仅用于个人学习场景的自动签到辅助，请遵守学校考勤规定。</span></div>
+            <div class="about-line"><span class="about-key">声明</span><button class="btn btn-ghost btn-sm" id="disclaimerView">${ICONS.shield}<span>查看免责声明</span></button></div>
           </div>
         </div>
       </section>
@@ -609,6 +619,46 @@ tr:hover td{background:#FCFAF8}
   </div>
 </div>
 <div class="drag-mask" id="dragMask"><div class="drag-box">松开即可上传二维码签到图片<small>支持任意签到二维码，识别后自动完成签到</small></div></div>
+
+<!-- 免责声明：首次进入软件时显示，同意后进入，不同意退出 -->
+<div class="modal-mask" id="disclaimerModal" style="display:none">
+  <div class="modal disclaimer-modal">
+    <div class="modal-head">
+      <span class="modal-title">${ICONS.shield}<span>免责声明</span></span>
+    </div>
+    <div class="modal-body">
+      <div class="disclaimer-scroll">
+        <h3>学习通自动签到助手 免责声明</h3>
+        <p>感谢使用学习通自动签到助手（以下简称"本软件"）。在使用本软件前，请仔细阅读并充分理解以下全部条款。您点击下方「同意并继续」按钮，即表示您已阅读、理解并自愿接受本声明的全部内容。</p>
+        <h4>一、软件性质与使用范围</h4>
+        <p>1. 本软件是一款仅供个人学习辅助使用的自动化工具，用于协助使用者在本人已选课程中完成学习通平台的签到操作，以减轻重复性操作负担，不提供任何商业服务。</p>
+        <p>2. 本软件仅限使用者本人使用，不得转售、出租、出借，不得用于任何商业用途或任何违反法律法规、平台规则的目的。</p>
+        <h4>二、合规与责任声明</h4>
+        <p>1. 使用者所在学校、学院可能对课堂考勤、签到行为有明确管理规定（包括但不限于：使用第三方工具自动签到可能被认定为违反考勤纪律的情形）。使用者应在使用前了解并遵守所在学校、学院及任课教师的相关规定。</p>
+        <p>2. 因使用本软件而导致的考勤记录异常、课程成绩影响、纪律处分或其他任何后果，均由使用者本人自行承担，软件作者不承担任何责任。</p>
+        <p>3. 本软件仅辅助完成签到操作，不代替使用者对课程内容的学习与掌握，使用者仍应正常参与课堂学习，按时完成学习任务。</p>
+        <h4>三、平台条款与账号安全</h4>
+        <p>1. 使用者应遵守学习通平台（超星学习通）的用户协议、隐私政策及相关法律法规，不得利用本软件从事违反平台规则的操作，如账号共享、批量注册、恶意刷课等。</p>
+        <p>2. 使用者应妥善保管自己的学习通账号与密码。本软件对账号密码采用本地加密存储（Windows DPAPI 加密，与当前系统用户绑定），不会明文保存；但使用者仍不得将账号出借给他人，并应对自己账号下的全部操作负责。</p>
+        <p>3. 因账号保管不善、密码泄露或被他人冒用所导致的任何损失，由使用者自行承担；本软件及作者不对账号安全承担担保责任。</p>
+        <h4>四、服务可用性与技术限制</h4>
+        <p>1. 本软件依赖学习通平台的公开接口与网络环境。平台接口变更、网络波动、服务器异常、登录状态失效、课程安排调整等情况均可能导致签到失败或功能异常，本软件不保证签到 100% 成功。</p>
+        <p>2. 使用者应留意签到结果通知。如发现签到失败或漏签，应及时通过学习通 APP 手动补签，避免影响考勤。</p>
+        <p>3. 本软件按"现状"提供，不提供任何明示或默示的担保，包括但不限于适销性、特定用途适用性及不侵权担保。</p>
+        <h4>五、数据与隐私</h4>
+        <p>1. 本软件的所有配置数据、签到记录均存储于使用者本地设备，默认不会上传至任何第三方服务器；除使用者主动配置的通知通道（如钉钉、邮件、PushPlus、Bark 等）外，本软件不向外部发送任何数据。</p>
+        <p>2. 使用者如将本软件安装包、配置文件或软件目录分享给他人，需自行评估风险；本软件及作者不对因分享造成的账号、密码或数据泄露承担任何责任。</p>
+        <h4>六、其他</h4>
+        <p>1. 本声明内容可能随软件功能更新而调整，更新后以软件内展示的最新版本为准。</p>
+        <p>2. 如使用者不同意本声明的任何条款，请点击「不同意并退出」，停止使用并卸载本软件。</p>
+      </div>
+    </div>
+    <div class="modal-foot" style="justify-content:flex-end;gap:12px;padding:14px 18px">
+      <button class="btn btn-ghost btn-danger" id="disclaimerRefuse">不同意并退出</button>
+      <button class="btn btn-primary" id="disclaimerAgree">同意并继续</button>
+    </div>
+  </div>
+</div>
 
 <!-- 二维码签到弹窗：拖入任意签到码图片即完成签到 -->
 <div class="modal-mask" id="qrModal" style="display:none">
@@ -649,6 +699,37 @@ tr:hover td{background:#FCFAF8}
     show(btn.dataset.view)
     if(history.replaceState)history.replaceState(null,'','#'+btn.dataset.view)
   })
+
+  // ===== 免责声明（首次进入显示，同意后不再打扰；不同意则退出软件） =====
+  function ensureDisclaimer(){
+    var box=document.getElementById('disclaimerModal')
+    if(!box)return
+    try{
+      if(localStorage.getItem('disclaimerAccepted')==='1')return
+    }catch(e){/* 隐私模式等场景无法存取，直接显示 */}
+    box.style.display='flex'
+  }
+  function closeDisclaimer(){
+    var box=document.getElementById('disclaimerModal')
+    if(box)box.style.display='none'
+  }
+  var disAgree=document.getElementById('disclaimerAgree')
+  if(disAgree)disAgree.addEventListener('click',function(){
+    try{localStorage.setItem('disclaimerAccepted','1')}catch(e){}
+    closeDisclaimer()
+  })
+  var disRefuse=document.getElementById('disclaimerRefuse')
+  if(disRefuse)disRefuse.addEventListener('click',function(){
+    closeDisclaimer()
+    if(window.appCtl&&window.appCtl.quit){window.appCtl.quit()}
+    else{window.close()}
+  })
+  var disView=document.getElementById('disclaimerView')
+  if(disView)disView.addEventListener('click',function(){
+    var box=document.getElementById('disclaimerModal')
+    if(box)box.style.display='flex'
+  })
+  ensureDisclaimer()
   function render(s){
     document.getElementById('stat-courses').textContent=(s.courses||[]).length
     document.getElementById('stat-records').textContent=s.recordCount||0

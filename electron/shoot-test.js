@@ -36,6 +36,11 @@ async function shoot(name) {
 async function openAndShoot() {
   win = new BrowserWindow({ width: 1280, height: 820, show: false, frame: false, backgroundColor: '#F6F4F1', webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload.js') } })
   await win.loadURL(CONSOLE_URL)
+  // 强制显示免责声明并截图，再点击同意继续
+  await win.webContents.executeJavaScript(`localStorage.removeItem('disclaimerAccepted'); location.reload(); true`)
+  await new Promise(r => setTimeout(r, 1500))
+  await shoot('0-disclaimer')
+  await win.webContents.executeJavaScript(`(function(){var b=document.getElementById('disclaimerAgree');if(b)b.click();return true})()`)
   await shoot('1-overview')
   await win.webContents.executeJavaScript(`document.querySelector('[data-view="courses"]').click()`)
   await shoot('2-courses')

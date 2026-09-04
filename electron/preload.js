@@ -12,4 +12,5 @@ contextBridge.exposeInMainWorld('winCtl', {
 contextBridge.exposeInMainWorld('appCtl', {
   getAutoLaunch: () => ipcRenderer.invoke('auto-launch-get'),
   setAutoLaunch: (v) => ipcRenderer.invoke('auto-launch-set', v),
+  quit: () => ipcRenderer.send('app-quit'),
 })

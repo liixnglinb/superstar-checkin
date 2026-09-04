@@ -154,6 +154,11 @@ app.whenReady().then(() => {
       return { ok: false, message: String(err) }
     }
   })
+  // 免责声明「不同意并退出」：真正退出应用（不驻留托盘）
+  ipcMain.on('app-quit', () => {
+    quitting = true
+    app.quit()
+  })
   // 启动签到服务（构建产物，与窗口同进程）
   try {
     require(path.join(__dirname, '..', 'build', 'index.js'))
