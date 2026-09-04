@@ -98,7 +98,7 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
         </div>
         <span class="pill pill-ok">已登录</span>
       </div>`).join('')
-    : `<div class="empty"><p>未配置账号</p><p class="empty-sub">请在 config.yaml 中填写账号后重启软件</p></div>`
+    : `<div class="empty"><p>未配置账号</p><p class="empty-sub">首次使用请在"设置"页填写你的学习通账号（支持多用户各自登录）</p><a class="btn btn-ghost" href="#settings" style="margin-top:12px">去配置账号</a></div>`
 
   const courseRows = courses.length
     ? courses.map(c => `
@@ -218,6 +218,11 @@ body{font-family:var(--font);background:var(--canvas);color:var(--text);font-siz
 .section-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
 .section-title{font-size:14px;font-weight:600}
 .section-more{font-size:12px;color:var(--text-3)}
+.field-label{font-size:12.5px;font-weight:600;color:var(--text-2)}
+.field-input{height:38px;padding:0 12px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;color:var(--text);background:#fff;outline:none;transition:border-color .12s ease,box-shadow .12s ease;box-sizing:border-box}
+.field-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(14,124,102,.12)}
+.field-hint{font-size:12px;color:var(--text-3);line-height:1.7;margin:0}
+.cfg-msg{font-size:12.5px;font-weight:600}
 /* ===== 表格 ===== */
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th{text-align:left;padding:10px 18px;font-size:12px;font-weight:600;color:var(--text-2);border-bottom:1px solid var(--border);background:var(--surface-2);letter-spacing:.02em}
@@ -334,6 +339,24 @@ tr:hover td{background:#FAFBFC}
           ${settingsRows}
         </div>
         <div class="section">
+          <div class="section-head"><span class="section-title">账号配置</span><span class="section-more">首次使用需填写学习通账号</span></div>
+          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;max-width:520px;box-sizing:border-box">
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <label class="field-label" for="cfgUsername">学习通账号（手机号）</label>
+              <input class="field-input" id="cfgUsername" type="text" placeholder="请输入学习通账号" autocomplete="off" style="width:100%">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <label class="field-label" for="cfgPassword">密码</label>
+              <input class="field-input" id="cfgPassword" type="password" placeholder="请输入密码" style="width:100%">
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <button class="btn btn-primary" id="cfgSaveBtn">保存账号</button>
+              <span class="cfg-msg" id="cfgMsg"></span>
+            </div>
+            <p class="field-hint">保存后需重启软件生效。账号保存在软件目录 config.yaml 中，请妥善保管，勿分享包含账号的软件目录。</p>
+          </div>
+        </div>
+        <div class="section">
           <div class="section-head"><span class="section-title">说明</span></div>
           <div style="padding:14px 18px;font-size:13px;color:var(--text-2);line-height:1.8">
             配置修改后需重启软件生效。二维码/拍照签到可直接点击右上角按钮上传，也可用手机访问本机局域网地址上传。
@@ -382,7 +405,7 @@ tr:hover td{background:#FAFBFC}
             var nm=a.name||a.username||'?'
             return '<div class="acct-row"><span class="acct-avatar">'+esc(nm.slice(0,1))+'</span><div class="acct-info"><div class="acct-name">'+esc(nm)+'</div><div class="acct-sub">'+esc(a.schoolname||'')+' · '+esc(String(a.username))+'</div></div><span class="pill pill-ok">已登录</span></div>'
           }).join('')
-        : '<div class="empty"><p>未配置账号</p><p class="empty-sub">请在 config.yaml 中填写账号后重启软件</p></div>'
+        : '<div class="empty"><p>未配置账号</p><p class="empty-sub">首次使用请在"设置"页填写你的学习通账号</p><a class="btn btn-ghost" href="#settings" style="margin-top:12px">去配置账号</a></div>'
     }
     // 课程表
     var cb=document.getElementById('coursesBody')
@@ -402,6 +425,24 @@ tr:hover td{background:#FAFBFC}
   function typeText(t){var m={normal:'普通',gesture:'手势',qr:'二维码',location:'位置',photo:'拍照'};return m[t]||t}
   function poll(){fetch('/api/status').then(function(r){return r.json()}).then(render).catch(function(){})}
   if(location.hash&&views.indexOf(location.hash.slice(1))>=0)show(location.hash.slice(1))
+  window.addEventListener('hashchange',function(){var v=location.hash.slice(1);if(views.indexOf(v)>=0)show(v)})
+  var saveBtn=document.getElementById('cfgSaveBtn')
+  if(saveBtn)saveBtn.addEventListener('click',function(){
+    var u=document.getElementById('cfgUsername').value.trim()
+    var p=document.getElementById('cfgPassword').value
+    var msg=document.getElementById('cfgMsg')
+    if(!u||!p){msg.textContent='账号和密码不能为空';msg.style.color='#B42318';return}
+    saveBtn.disabled=true;saveBtn.textContent='保存中…'
+    fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        msg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||(d.ok?'已保存':'保存失败'))
+        msg.style.color=d.ok?'#0E7C66':'#B42318'
+        saveBtn.disabled=false;saveBtn.textContent='保存账号'
+        if(d.ok)setTimeout(function(){location.reload()},1500)
+      })
+      .catch(function(){msg.textContent='❌ 保存失败，请重试';msg.style.color='#B42318';saveBtn.disabled=false;saveBtn.textContent='保存账号'})
+  })
   poll()
   setInterval(poll,5000)
 })();

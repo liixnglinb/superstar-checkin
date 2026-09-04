@@ -1,16 +1,14 @@
-// 生成 build/embedded-config.json：把当前 config.yaml 以 base64 内嵌进构建产物
-// （Electron 打包版首次运行无 config.yaml 时自动写入，保证开箱即用）
+// 生成 build/embedded-config.json 的占位脚本
+// 说明：v3.1 起不再内嵌任何账号（支持多用户各自登录自己的账号）。
+// 首次运行无 config.yaml 时由 config.ts 生成空模板，软件内引导填写账号。
 const fs = require('fs')
 const path = require('path')
 
-const src = path.join(__dirname, 'config.yaml')
 const out = path.join(__dirname, 'build', 'embedded-config.json')
 
-if (!fs.existsSync(src)) {
-  console.log('config.yaml 不存在，跳过内嵌配置生成')
-  process.exit(0)
+// 生成不含账号的默认模板（保留内嵌机制的结构，但 accounts 恒为空）
+const emptyTemplate = {
+  b64: Buffer.from('accounts: []\n', 'utf-8').toString('base64'),
 }
-
-const b64 = fs.readFileSync(src, 'utf-8')
-fs.writeFileSync(out, JSON.stringify({ b64: Buffer.from(b64, 'utf-8').toString('base64') }))
-console.log('embedded-config.json generated:', out)
+fs.writeFileSync(out, JSON.stringify(emptyTemplate))
+console.log('embedded-config.json generated (no accounts - multi-user ready)')

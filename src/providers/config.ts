@@ -13,6 +13,7 @@ import { logger } from '../utils/logger'
 declare const __EMBEDDED_CONFIG_B64__: string | undefined
 
 const DEFAULT_CONFIG: Partial<AppConfig> = {
+  accounts: [],
   listener: {
     mode: 'hybrid',
     pollInterval: DEFAULTS.POLL_INTERVAL,
@@ -63,10 +64,8 @@ export function loadConfig(filePath?: string): AppConfig {
   // 深度合并
   const config = deepMerge(DEFAULT_CONFIG, raw) as AppConfig
 
-  // 基础校验
-  if (!config.accounts?.length) {
-    throw new Error('配置文件中 accounts 不能为空（请编辑 config.yaml 填入账号后重启）')
-  }
+  // 账号可为空：首次运行在软件内引导填写（支持多用户各自登录自己的账号）
+  if (!config.accounts) config.accounts = []
 
   return config
 }
@@ -106,9 +105,7 @@ function bootstrapConfig(filePath: string): AppConfig {
   }
 
   const merged = deepMerge(DEFAULT_CONFIG, embedded || {}) as AppConfig
-  if (!merged.accounts?.length) {
-    throw new Error('内置配置与默认配置均无账号信息，请在自动生成的 config.yaml 中填写账号后重启')
-  }
+  if (!merged.accounts) merged.accounts = []
 
   fs.writeFileSync(filePath, YAML.stringify(merged), 'utf-8')
   return merged

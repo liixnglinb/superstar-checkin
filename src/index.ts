@@ -136,12 +136,16 @@ async function main() {
   // 3. 通知管理器（先初始化，供账号刷新失败等回调引用，避免 TDZ）
   const notifier = new NotificationManager(config.notify.channels)
 
-  // 4. 账号管理（登录失败不致命：上传页/二维码通道仍应可用，待代理/网络恢复后重试）
+  // 4. 账号管理（无账号时以"未配置"状态启动，软件内引导填写；登录失败不致命：上传页/二维码通道仍应可用）
   const accountManager = new AccountManager(config.accounts)
-  try {
-    await accountManager.checkAll()
-  } catch (e: any) {
-    logger.error(`账号登录校验失败（上传页仍可用，待代理/网络恢复后重试）: ${e.message}`)
+  if (config.accounts.length === 0) {
+    logger.warn('未配置账号：请在软件"设置"页填写学习通账号后重启（支持多用户各自登录）')
+  } else {
+    try {
+      await accountManager.checkAll()
+    } catch (e: any) {
+      logger.error(`账号登录校验失败（上传页仍可用，待代理/网络恢复后重试）: ${e.message}`)
+    }
   }
 
   // Cookie 定时自动刷新（运行中途过期也不怕）
@@ -155,11 +159,15 @@ async function main() {
   const checkinHandler = new CheckinHandler(config, accountManager)
 
   // 6. 获取课程列表
-  const primaryMeta = accountManager.getMeta(config.accounts[0].username)
-  const courses = await getCourseList(primaryMeta.cookie).catch((e: any) => {
-    logger.error(`获取课程列表失败（不影响上传页）: ${e.message}`)
-    return []
-  })
+  const primaryMeta = config.accounts.length
+    ? accountManager.getMeta(config.accounts[0].username)
+    : { cookie: '', name: '', schoolname: '', uid: 0, fid: '' }
+  const courses = config.accounts.length
+    ? await getCourseList(primaryMeta.cookie).catch((e: any) => {
+        logger.error(`获取课程列表失败（不影响上传页）: ${e.message}`)
+        return []
+      })
+    : []
 
   // 看门狗状态
   const watchdog = {
@@ -280,10 +288,12 @@ async function main() {
       }
     })
 
-    try {
-      await imListener.connect(primaryMeta.cookie, primaryMeta.uid)
-    } catch (e: any) {
-      logger.error(`IM 连接失败（轮询/上传页仍可用）: ${e.message}`)
+    if (config.accounts.length > 0) {
+      try {
+        await imListener.connect(primaryMeta.cookie, primaryMeta.uid)
+      } catch (e: any) {
+        logger.error(`IM 连接失败（轮询/上传页仍可用）: ${e.message}`)
+      }
     }
   }
 

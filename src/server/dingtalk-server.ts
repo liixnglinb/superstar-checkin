@@ -1,5 +1,7 @@
 import * as http from 'http'
 import * as crypto from 'crypto'
+import * as fs from 'fs'
+import YAML from 'yaml'
 import axios from 'axios'
 import { logger } from '../utils/logger'
 import { getProxyConfig } from '../providers/runtime-config'
@@ -94,6 +96,34 @@ export class DingTalkServer {
       if (req.method === 'GET' && req.url === '/api/status') {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
         res.end(JSON.stringify(this.getStatus()))
+        return
+      }
+
+      // 账号配置保存（首次运行引导：填写账号 → 写 config.yaml → 重启生效）
+      if (req.method === 'POST' && req.url === '/api/config') {
+        try {
+          const body = JSON.parse(await this.readBody(req))
+          const username = String(body.username || '').trim()
+          const password = String(body.password || '')
+          if (!username || !password) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: false, message: '账号和密码不能为空' }))
+            return
+          }
+          const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+          const existing = fs.existsSync(cfgFile)
+            ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {}
+            : {}
+          existing.accounts = [{ username, password }]
+          fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
+          logger.info(`账号已保存到 ${cfgFile}（用户名: ${username}），重启后生效`)
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, message: '账号已保存，请重启软件生效' }))
+        } catch (e: any) {
+          logger.error(`保存账号失败: ${e.message}`)
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: `保存失败: ${e.message}` }))
+        }
         return
       }
 

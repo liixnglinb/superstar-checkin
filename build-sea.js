@@ -26,18 +26,8 @@ fs.mkdirSync(SEA_DIR, { recursive: true })
 fs.mkdirSync(DIST, { recursive: true })
 
 // 1. esbuild bundle（全部纯 JS 依赖内联；sharp/nodemailer 等可选原生依赖已用变量 require 排除）
-//    同时注入内置配置 base64（config.ts 用 __EMBEDDED_CONFIG_B64__ 读取，首次运行自动写 config.yaml）
+//    说明：v3.1 起不内嵌任何账号（支持多用户各自登录自己的账号），首次运行在软件内引导填写
 step('1/5 esbuild bundle')
-let embeddedB64 = ''
-try {
-  const cfgPath = path.join(ROOT, 'config.yaml')
-  if (fs.existsSync(cfgPath)) {
-    embeddedB64 = Buffer.from(fs.readFileSync(cfgPath, 'utf-8'), 'utf-8').toString('base64')
-    console.log(`内置配置: config.yaml -> ${embeddedB64.length} chars`)
-  }
-} catch (e) {
-  console.warn('config.yaml 读取失败，跳过内置配置注入:', e.message)
-}
 const esbuild = require('esbuild')
 esbuild.buildSync({
   entryPoints: [path.join(ROOT, 'build', 'index.js')],
@@ -47,7 +37,6 @@ esbuild.buildSync({
   target: 'node22',
   outfile: BUNDLE,
   logLevel: 'warning',
-  define: embeddedB64 ? { __EMBEDDED_CONFIG_B64__: JSON.stringify(embeddedB64) } : undefined,
 })
 
 // 2. SEA 配置
