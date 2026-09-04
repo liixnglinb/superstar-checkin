@@ -432,6 +432,10 @@ tr:hover td{background:#FCFAF8}
 .disclaimer-scroll h3{font-size:15.5px;font-weight:700;margin:0 0 10px;color:var(--text-1)}
 .disclaimer-scroll h4{font-size:13.5px;font-weight:600;margin:14px 0 6px;color:var(--accent-deep,#B45309)}
 .disclaimer-scroll p{margin:4px 0;text-align:justify}
+/* ===== 检查更新弹窗 ===== */
+.update-modal{max-width:540px;width:min(540px,92vw)}
+.spinner{width:15px;height:15px;border:2px solid rgba(0,0,0,0.14);border-top-color:var(--accent,#E8873A);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
 /* ===== 二维码签到弹窗 ===== */
 .modal-mask{position:fixed;inset:0;z-index:990;display:flex;align-items:center;justify-content:center;background:rgba(33,27,23,.42)}
 .modal{width:440px;max-width:92vw;background:var(--surface);border-radius:16px;box-shadow:0 18px 48px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden;animation:modalIn .16s ease}
@@ -614,7 +618,7 @@ tr:hover td{background:#FCFAF8}
         <div class="section">
           <div class="section-head"><span class="section-title">关于</span></div>
           <div class="about-box">
-            <div class="about-line"><span class="about-key">版本</span><span>学习通自动签到 v${esc(status.version || '3.1')}</span></div>
+            <div class="about-line"><span class="about-key">版本</span><span>学习通自动签到 v${esc(status.version || '3.1')}</span><button class="btn btn-ghost btn-sm" id="updateCheckBtn" style="margin-left:auto">${ICONS.download}<span>检查更新</span></button></div>
             <div class="about-line"><span class="about-key">仓库</span><span class="cell-mono">github.com/liixnglinb/superstar-checkin</span></div>
             <div class="about-line"><span class="about-key">说明</span><span>仅用于个人学习场景的自动签到辅助，请遵守学校考勤规定。</span></div>
             <div class="about-line"><span class="about-key">声明</span><button class="btn btn-ghost btn-sm" id="disclaimerView">${ICONS.shield}<span>查看免责声明</span></button></div>
@@ -625,6 +629,28 @@ tr:hover td{background:#FCFAF8}
   </div>
 </div>
 <div class="drag-mask" id="dragMask"><div class="drag-box">松开即可上传二维码签到图片<small>支持任意签到二维码，识别后自动完成签到</small></div></div>
+
+<!-- 检查更新：设置页「检查更新」按钮弹出 -->
+<div class="modal-mask" id="updateModal" style="display:none">
+  <div class="modal update-modal">
+    <div class="modal-head">
+      <span class="modal-title">${ICONS.download}<span>检查更新</span></span>
+    </div>
+    <div class="modal-body" style="min-height:110px">
+      <div id="updateBody" style="font-size:13px;color:var(--text-1);line-height:1.8"></div>
+      <div id="updateBar" style="display:none;margin-top:14px">
+        <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+          <div id="updateBarFill" style="height:100%;width:0%;background:var(--accent,#E8873A);transition:width .2s"></div>
+        </div>
+        <div id="updateBarText" style="font-size:12px;color:var(--text-3);margin-top:6px">正在下载安装包…</div>
+      </div>
+    </div>
+    <div class="modal-foot" style="justify-content:flex-end;gap:10px;padding:14px 18px">
+      <button class="btn btn-ghost" id="updateLater">以后再说</button>
+      <button class="btn btn-primary" id="updateGo" style="display:none">立即下载安装</button>
+    </div>
+  </div>
+</div>
 
 <!-- 免责声明：首次进入软件时显示，同意后进入，不同意退出 -->
 <div class="modal-mask" id="disclaimerModal" style="display:none">
@@ -736,6 +762,94 @@ tr:hover td{background:#FCFAF8}
     if(box)box.style.display='flex'
   })
   ensureDisclaimer()
+
+  // ===== 检查更新（设置页「检查更新」按钮 → GitHub Releases） =====
+  var updateCheckBtn=document.getElementById('updateCheckBtn')
+  var updateModal=document.getElementById('updateModal')
+  var updateBody=document.getElementById('updateBody')
+  var updateGo=document.getElementById('updateGo')
+  var updateLater=document.getElementById('updateLater')
+  var updateBar=document.getElementById('updateBar')
+  var updateBarFill=document.getElementById('updateBarFill')
+  var updateBarText=document.getElementById('updateBarText')
+  var updateState={file:''}
+  if(updateGo)updateGo.addEventListener('click',function(){
+    if(updateState.file){
+      // 已下载：立即安装（启动安装向导后软件自动退出）
+      updateGo.disabled=true;updateGo.textContent='正在启动安装…'
+      window.updateCtl.install(updateState.file).then(function(r){
+        if(!r||!r.ok){updateGo.disabled=false;updateGo.textContent='立即安装';updateBody.innerHTML='<div class="cell-empty">安装启动失败：'+(r&&r.message?esc(r.message):'未知错误')+'</div>'}
+      }).catch(function(){updateGo.disabled=false;updateGo.textContent='立即安装';updateBody.innerHTML='<div class="cell-empty">安装启动失败，请稍后重试</div>'})
+      return
+    }
+    // 未下载：开始下载
+    if(!window.updateCtl){updateBody.innerHTML='<div class="cell-empty">更新组件不可用（请使用安装版）</div>';return}
+    updateGo.disabled=true;updateGo.textContent='下载中…'
+    updateBar.style.display=''
+    updateBarFill.style.width='0%'
+    updateBarText.textContent='正在下载安装包… 0%'
+    window.updateCtl.download().then(function(r){
+      if(r&&r.ok){
+        updateState.file=r.file
+        updateBar.style.display='none'
+        updateBody.innerHTML='<div style="padding:6px 0"><b>下载完成</b><br><span style="color:var(--text-3);font-size:12.5px">安装包已保存到本地，点击「立即安装」启动安装向导，也可以稍后手动安装。</span></div>'
+        updateGo.disabled=false;updateGo.textContent='立即安装'
+        updateLater.textContent='稍后再说'
+      }else{
+        updateBar.style.display='none'
+        updateGo.disabled=false;updateGo.textContent='重新下载'
+        updateBody.innerHTML='<div class="cell-empty">下载失败：'+(r&&r.message?esc(r.message):'网络异常，请重试')+'</div>'
+      }
+    }).catch(function(){
+      updateBar.style.display='none'
+      updateGo.disabled=false;updateGo.textContent='重新下载'
+      updateBody.innerHTML='<div class="cell-empty">下载失败，请检查网络后重试</div>'
+    })
+  })
+  if(updateLater)updateLater.addEventListener('click',function(){
+    if(updateModal)updateModal.style.display='none'
+    updateLater.textContent='以后再说'
+  })
+  // 下载进度（仅注册一次）
+  if(window.updateCtl&&window.updateCtl.onProgress){
+    window.updateCtl.onProgress(function(d){
+      if(d&&d.phase==='downloading'&&updateBarFill){
+        var pct=d.pct||0
+        updateBarFill.style.width=pct+'%'
+        updateBarText.textContent='正在下载安装包… '+pct+'%'
+      }
+    })
+  }
+  if(updateCheckBtn)updateCheckBtn.addEventListener('click',function(){
+    if(!window.updateCtl){return}
+    updateState.file=''
+    if(updateModal)updateModal.style.display='flex'
+    updateGo.style.display='none'
+    updateLater.textContent='以后再说'
+    updateBar.style.display='none'
+    updateBody.innerHTML='<div style="display:flex;gap:10px;align-items:center"><span class="spinner"></span>正在检查更新…</div>'
+    window.updateCtl.check().then(function(r){
+      if(!r||!r.ok){
+        updateGo.style.display='none'
+        updateLater.textContent='知道了'
+        updateBody.innerHTML='<div class="cell-empty">'+(r&&r.message?esc(r.message):'检查更新失败，请检查网络后重试')+'</div>'
+        return
+      }
+      if(!r.hasUpdate){
+        updateGo.style.display='none'
+        updateLater.textContent='知道了'
+        updateBody.innerHTML='<div style="padding:6px 0">当前已是最新版本 <b>v'+esc(r.current)+'</b>，无需更新。</div>'
+        return
+      }
+      updateGo.style.display=''
+      updateGo.disabled=false;updateGo.textContent='立即下载安装'
+      updateBody.innerHTML='<div style="padding:4px 0"><div style="font-size:14px;font-weight:600;margin-bottom:8px">发现新版本 <b>v'+esc(r.latest)+'</b>（当前 v'+esc(r.current)+'）</div><div style="max-height:220px;overflow-y:auto;white-space:pre-wrap;background:var(--bg2,#FBF9F7);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text-2)">'+(r.body?esc(r.body):'暂无更新说明')+'</div></div>'
+    }).catch(function(){
+      updateGo.style.display='none'
+      updateLater.textContent='知道了'
+      updateBody.innerHTML='<div class="cell-empty">检查更新失败，请检查网络后重试</div>'
+    })
+  })
   function render(s){
     document.getElementById('stat-courses').textContent=(s.courses||[]).length
     document.getElementById('stat-records').textContent=s.recordCount||0

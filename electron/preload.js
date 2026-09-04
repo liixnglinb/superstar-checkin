@@ -14,3 +14,10 @@ contextBridge.exposeInMainWorld('appCtl', {
   setAutoLaunch: (v) => ipcRenderer.invoke('auto-launch-set', v),
   quit: () => ipcRenderer.send('app-quit'),
 })
+
+contextBridge.exposeInMainWorld('updateCtl', {
+  check: () => ipcRenderer.invoke('update-check'),
+  download: () => ipcRenderer.invoke('update-download'),
+  install: (file) => ipcRenderer.invoke('update-install', file),
+  onProgress: (cb) => ipcRenderer.on('update-progress', (_e, d) => cb(d)),
+})

@@ -3,7 +3,7 @@
 process.env.NO_OPEN_BROWSER = '1' // 禁止服务层调用系统浏览器
 
 const path = require('path')
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain } = require('electron')
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell } = require('electron')
 
 // 单实例：防止重复启动
 if (!app.requestSingleInstanceLock()) {
@@ -158,6 +158,129 @@ app.whenReady().then(() => {
   ipcMain.on('app-quit', () => {
     quitting = true
     app.quit()
+  })
+
+  // ===== 检查更新（GitHub Releases：软件内「检查更新」按钮） =====
+  const REPO_LATEST = process.env.UPDATE_URL || 'https://api.github.com/repos/liixnglinb/superstar-checkin/releases/latest'
+  const UA = { 'User-Agent': 'superstar-checkin-desktop' }
+
+  function compareVersions(a, b) {
+    const pa = String(a || '').replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0)
+    const pb = String(b || '').replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0)
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const x = pa[i] || 0
+      const y = pb[i] || 0
+      if (x > y) return 1
+      if (x < y) return -1
+    }
+    return 0
+  }
+
+  // GitHub API 请求（axios + 支持软件配置的代理）
+  function getUpdateProxy() {
+    try {
+      const cfgFile = path.join(process.cwd(), 'config.yaml')
+      const fs = require('fs')
+      if (fs.existsSync(cfgFile)) {
+        const YAML = require('yaml')
+        const cfg = YAML.parse(fs.readFileSync(cfgFile, 'utf8'))
+        if (cfg && typeof cfg.proxy === 'string' && cfg.proxy.trim()) {
+          const u = new URL(cfg.proxy.trim())
+          return { protocol: u.protocol.replace(':', ''), host: u.hostname, port: Number(u.port || 80) }
+        }
+      }
+    } catch (e) { /* 无代理配置 */ }
+    return false
+  }
+
+  async function fetchLatestRelease() {
+    const axios = require('axios')
+    const res = await axios.get(REPO_LATEST, {
+      headers: Object.assign({ Accept: 'application/vnd.github+json' }, UA),
+      proxy: getUpdateProxy(),
+      timeout: 20000,
+      validateStatus: (s) => s < 500,
+    })
+    if (res.status === 404) throw new Error('HTTP 404')
+    if (res.status !== 200) throw new Error('HTTP ' + res.status)
+    return res.data
+  }
+
+  function downloadFile(url, filePath, onProgress) {
+    return new Promise((resolve, reject) => {
+      const fs = require('fs')
+      const axios = require('axios')
+      axios.get(url, {
+        headers: UA,
+        proxy: getUpdateProxy(),
+        timeout: 300000,
+        responseType: 'stream',
+        onDownloadProgress: (evt) => {
+          const total = evt.total || 0
+          onProgress && onProgress(total ? Math.min(100, Math.round((evt.loaded / total) * 100)) : 0, evt.loaded, total)
+        },
+      }).then((res) => {
+        const out = fs.createWriteStream(filePath)
+        res.data.pipe(out)
+        out.on('finish', () => { out.close(); resolve(filePath) })
+        out.on('error', reject)
+      }).catch(reject)
+    })
+  }
+
+  ipcMain.handle('update-check', async () => {
+    try {
+      const rel = await fetchLatestRelease()
+      const latest = String(rel.tag_name || '').replace(/^v/i, '')
+      const current = app.getVersion()
+      const hasUpdate = !!latest && compareVersions(latest, current) > 0
+      const asset = (rel.assets || []).find((a) => /\.exe$/.test(a.name || ''))
+      return {
+        ok: true,
+        hasUpdate: !!hasUpdate,
+        current,
+        latest: latest || String(rel.tag_name || ''),
+        name: rel.name || '',
+        body: String(rel.body || '').slice(0, 800),
+        url: asset ? asset.browser_download_url : '',
+        size: asset ? asset.size : 0,
+      }
+    } catch (e) {
+      const msg = String((e && e.message) || e)
+      const is404 = /404/.test(msg)
+      return {
+        ok: false,
+        hasUpdate: false,
+        message: is404 ? '暂无已发布的更新版本（请先在 GitHub Releases 发布）' : '检查更新失败：无法连接 GitHub，请检查网络，或在 config.yaml 配置 proxy 代理后重试',
+      }
+    }
+  })
+
+  ipcMain.handle('update-download', async (event) => {
+    try {
+      const rel = await fetchLatestRelease()
+      const asset = (rel.assets || []).find((a) => /\.exe$/.test(a.name || ''))
+      if (!asset || !asset.browser_download_url) throw new Error('安装包不存在')
+      const target = path.join(app.getPath('temp'), asset.name || '学习通自动签到-更新.exe')
+      await downloadFile(asset.browser_download_url, target, (pct) => {
+        event.sender.send('update-progress', { phase: 'downloading', pct })
+      })
+      return { ok: true, file: target }
+    } catch (e) {
+      return { ok: false, message: String((e && e.message) || e) }
+    }
+  })
+
+  ipcMain.handle('update-install', async (_e, file) => {
+    try {
+      const err = await shell.openPath(file)
+      if (err) return { ok: false, message: err }
+      // 启动安装向导后退出当前应用，避免安装时文件占用导致失败
+      setTimeout(() => { quitting = true; app.quit() }, 1500)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, message: String((e && e.message) || e) }
+    }
   })
   // 启动签到服务（构建产物，与窗口同进程）
   try {
