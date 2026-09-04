@@ -188,34 +188,34 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
   const settingsForm = `
     <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;max-width:620px;box-sizing:border-box">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <label class="field-label" for="setPoll" style="width:110px">轮询间隔（秒）</label>
+        <label class="field-label" for="setPoll" style="width:104px">轮询间隔（秒）</label>
         <input class="field-input" id="setPoll" type="number" min="10" max="600" value="${Math.round((status.pollInterval || 30000) / 1000)}" style="width:120px">
         <span class="field-hint" style="line-height:1.5">10~600，越小发现签到越快，越频繁越可能被风控（默认 30）</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <label class="field-label" for="setJitter" style="width:110px">轮询随机抖动（秒）</label>
+        <label class="field-label" for="setJitter" style="width:104px">轮询抖动（秒）</label>
         <input class="field-input" id="setJitter" type="number" min="0" max="120" value="${Math.round(status.pollJitter || 15)}" style="width:120px">
         <span class="field-hint" style="line-height:1.5">每次轮询叠加 0~抖动 的随机延迟，避免固定节奏被风控识别（0 = 关闭）</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <label class="field-label" for="setRetry" style="width:110px">失败重试次数</label>
+        <label class="field-label" for="setRetry" style="width:104px">失败重试次数</label>
         <input class="field-input" id="setRetry" type="number" min="1" max="10" value="${status.retryMaxAttempts || 3}" style="width:120px">
-        <label class="field-label" for="setRetryDelay" style="width:90px;margin-left:10px">重试间隔（秒）</label>
+        <label class="field-label" for="setRetryDelay" style="width:90px;margin-left:2px">重试间隔（秒）</label>
         <input class="field-input" id="setRetryDelay" type="number" min="1" max="120" value="${Math.round((status.retryDelayMs || 5000) / 1000)}" style="width:120px">
         <span class="field-hint" style="line-height:1.5">签到失败后自动重试的次数与间隔</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <label class="field-label" for="setRadius" style="width:110px">位置签到半径（米）</label>
+        <label class="field-label" for="setRadius" style="width:104px">位置半径（米）</label>
         <input class="field-input" id="setRadius" type="number" min="1" max="500" value="${Math.round(status.locationRadius || 10)}" style="width:120px">
         <span class="field-hint" style="line-height:1.5">以老师发布坐标为中心生成签到点（默认 10）</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <label class="field-label" for="setDesktop" style="width:110px">桌面通知</label>
+        <label class="field-label" for="setDesktop" style="width:104px">桌面通知</label>
         <button class="switch ${status.notifyDesktop === false ? '' : 'on'}" id="setDesktop" type="button" role="switch"><span class="knob"></span></button>
         <span class="field-hint" style="line-height:1.5">签到成功/失败/二维码待签时弹出系统通知</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <label class="field-label" for="setQuiet" style="width:110px">免打扰时段</label>
+        <label class="field-label" for="setQuiet" style="width:104px">免打扰时段</label>
         <button class="switch ${quiet.enabled ? 'on' : ''}" id="setQuiet" type="button" role="switch"><span class="knob"></span></button>
         <input class="field-input" id="setQuietStart" type="time" value="${esc(quiet.start)}" style="width:110px">
         <span class="field-hint">至</span>
@@ -229,12 +229,12 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
         <span class="field-hint">点推送当天签到总结（成功/失败/未成功课程）</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <label class="field-label" for="setVerify" style="width:110px">签到后二次核对</label>
+        <label class="field-label" for="setVerify" style="width:104px">签到后二次核对</label>
         <button class="switch ${status.verifyEnabled === false ? '' : 'on'}" id="setVerify" type="button" role="switch"><span class="knob"></span></button>
         <span class="field-hint" style="line-height:1.5">提交成功后再次查询平台确认已签到，避免"显示成功实际没签上"（默认开启）</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <label class="field-label" for="setAutoLaunch" style="width:110px">开机自启</label>
+        <label class="field-label" for="setAutoLaunch" style="width:104px">开机自启</label>
         <button class="switch" id="setAutoLaunch" type="button" role="switch"><span class="knob"></span></button>
         <span class="field-hint" style="line-height:1.5">开机后自动在后台运行，保证签到不中断</span>
       </div>
@@ -305,6 +305,8 @@ body{font-family:var(--font);background:var(--canvas);color:var(--text);font-siz
 .win-btn svg{width:11px;height:11px}
 .win-btn:hover{background:var(--surface-2);color:var(--text)}
 .win-close:hover{background:#E5484D;color:#fff}
+/* 键盘焦点可见（可访问性） */
+.btn:focus-visible,.watch-toggle:focus-visible,.switch:focus-visible,.nav-item:focus-visible,.win-btn:focus-visible,.modal-close:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .app{flex:1;display:flex;min-height:0}
 /* ===== 左侧栏 ===== */
 .side{width:224px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 12px}
@@ -454,7 +456,10 @@ tr:hover td{background:#FCFAF8}
 .qr-status{margin-top:14px;font-size:13px;color:var(--text-2);text-align:center;min-height:20px}
 .qr-status.ok{color:var(--ok);font-weight:600}
 .qr-status.err{color:var(--err);font-weight:600}
-.modal-foot{padding:12px 18px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3)}
+.modal-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:14px 18px;border-top:1px solid var(--border);font-size:12px;color:var(--text-3)}
+/* 免责声明：底部操作区撑满整行（左侧不同意、右侧同意并继续） */
+.disclaimer-modal .modal-foot{padding:16px 18px;gap:12px}
+.disclaimer-modal .modal-foot .btn{flex:1;justify-content:center;padding:11px 14px;font-size:13.5px;border-radius:10px}
 /* ===== 空态 ===== */
 .empty{padding:36px 18px;text-align:center}
 .empty p{color:var(--text-2);font-size:14px}
@@ -645,7 +650,7 @@ tr:hover td{background:#FCFAF8}
         <div id="updateBarText" style="font-size:12px;color:var(--text-3);margin-top:6px">正在下载安装包…</div>
       </div>
     </div>
-    <div class="modal-foot" style="justify-content:flex-end;gap:10px;padding:14px 18px">
+    <div class="modal-foot">
       <button class="btn btn-ghost" id="updateLater">以后再说</button>
       <button class="btn btn-primary" id="updateGo" style="display:none">立即下载安装</button>
     </div>
@@ -685,7 +690,7 @@ tr:hover td{background:#FCFAF8}
         <p>2. 如使用者不同意本声明的任何条款，请点击「不同意并退出」，停止使用并卸载本软件。</p>
       </div>
     </div>
-    <div class="modal-foot" style="justify-content:flex-end;gap:12px;padding:14px 18px">
+    <div class="modal-foot">
       <button class="btn btn-ghost btn-danger" id="disclaimerRefuse">不同意并退出</button>
       <button class="btn btn-primary" id="disclaimerAgree">同意并继续</button>
     </div>
@@ -711,7 +716,7 @@ tr:hover td{background:#FCFAF8}
       </div>
       <div class="qr-status" id="qrStatus"></div>
     </div>
-    <div class="modal-foot">签到二维码会随时间更新，更新后拖入新码即可</div>
+    <div class="modal-foot" style="justify-content:flex-start">签到二维码会随时间更新，更新后拖入新码即可</div>
   </div>
 </div>
 
