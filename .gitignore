@@ -301,3 +301,7 @@ ui-shots/
 skills-study/
 !assets/app-icon.ico
 
+
+# 安装版运行解包产物
+chaoxing-auto-sign/
+dist-electron/
