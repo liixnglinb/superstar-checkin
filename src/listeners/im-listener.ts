@@ -239,7 +239,7 @@ export class ImListener {
     })
     const $ = cheerio.load(res.data)
     const token = $('#myToken').text()
-    if (!token) throw new Error('未能从 webim/me 页面获取 IM token（Cookie 可能已失效）')
+    if (!token) throw new Error('未能获取 IM token（IM 通道暂不可用，已由轮询监听兜底）')
     return token
   }
 

@@ -223,7 +223,7 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
         <span class="field-hint" style="line-height:1.5">期间不弹桌面通知，签到照常进行</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <label class="field-label" for="setReport" style="width:110px">每日签到日报</label>
+        <label class="field-label" for="setReport" style="width:104px">每日签到日报</label>
         <button class="switch ${status.report && status.report.enabled !== false ? 'on' : ''}" id="setReport" type="button" role="switch"><span class="knob"></span></button>
         <input class="field-input" id="setReportHour" type="number" min="0" max="23" value="${(status.report && status.report.hour) || 22}" style="width:80px">
         <span class="field-hint">点推送当天签到总结（成功/失败/未成功课程）</span>
