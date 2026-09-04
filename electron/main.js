@@ -3,7 +3,7 @@
 process.env.NO_OPEN_BROWSER = '1' // 禁止服务层调用系统浏览器
 
 const path = require('path')
-const { app, BrowserWindow, Tray, Menu, nativeImage } = require('electron')
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain } = require('electron')
 
 // 单实例：防止重复启动
 if (!app.requestSingleInstanceLock()) {
@@ -60,12 +60,14 @@ function openWindow() {
     minHeight: 640,
     title: '学习通自动签到',
     icon: ICON,
-    autoHideMenuBar: true,
+    // 无边框自绘标题栏：去掉系统深色标题栏（大黑边），标题栏与内置 UI 融为一体
+    frame: false,
     backgroundColor: '#F4F6F8',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
   })
   mainWindow.loadURL(CONSOLE_URL)
@@ -103,6 +105,17 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
+  // 窗口控制（自绘标题栏按钮 → 主进程；模块级注册一次，避免重复监听）
+  ipcMain.on('win-minimize', () => mainWindow && mainWindow.minimize())
+  ipcMain.on('win-maximize-toggle', () => {
+    if (!mainWindow) return
+    mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize()
+  })
+  ipcMain.on('win-close', () => {
+    // 与系统关闭行为一致：最小化到托盘（后台继续签到监控）
+    if (mainWindow) mainWindow.close()
+  })
+  ipcMain.handle('win-is-maximized', () => mainWindow ? mainWindow.isMaximized() : false)
   // 启动签到服务（构建产物，与窗口同进程）
   try {
     require(path.join(__dirname, '..', 'build', 'index.js'))

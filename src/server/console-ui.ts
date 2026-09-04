@@ -31,7 +31,6 @@ const ICONS = {
   history: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   qr: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14h1M14 20h1M18 18h3v3h-3z"/></svg>',
-  camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
   x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
   clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>',
@@ -40,6 +39,15 @@ const ICONS = {
   radio: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>',
   server: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>',
   bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+  // 品牌闹钟（与安装图标同语义：自动签到 + 准时）
+  alarm: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="6.5"/><path d="M12 10.5v3.2l2.2 1.4"/><path d="M8.8 2.8 7 5.4M15.2 2.8 17 5.4"/></svg>',
+  // 窗口控制（自绘标题栏）
+  winMin: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1"><path d="M2 6h8"/></svg>',
+  winMax: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1"><rect x="2.5" y="2.5" width="7" height="7"/></svg>',
+  winRestore: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1"><path d="M4.5 4.5V2.5h5v5h-2"/><rect x="2.5" y="4.5" width="5" height="5"/></svg>',
+  winClose: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1"><path d="M2.8 2.8l6.4 6.4M9.2 2.8l-6.4 6.4"/></svg>',
+  location: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
 }
 
 function esc(s: any): string {
@@ -163,21 +171,31 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
-  --canvas:#F4F6F8;--surface:#FFFFFF;--surface-2:#EDF0F3;
-  --text:#1B1F24;--text-2:#5A6470;--text-3:#8A93A0;
-  --border:#E2E6EA;
-  --accent:#0E7C66;--accent-weak:#E3F2EC;
+  --canvas:#F6F4F1;--surface:#FFFFFF;--surface-2:#F1ECE7;
+  --text:#211B17;--text-2:#6B5B51;--text-3:#9A8B80;
+  --border:#E9E0D8;
+  --accent:#C24E2E;--accent-strong:#A83F22;--accent-weak:#FBE9E1;
   --ok:#178A5B;--err:#D64545;--warn:#B7791F;
-  --radius-lg:12px;--radius-sm:8px;
+  --radius-lg:14px;--radius-sm:9px;
   --font:-apple-system,"Segoe UI Variable","Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
 }
 html,body{height:100%}
 body{font-family:var(--font);background:var(--canvas);color:var(--text);font-size:14px;line-height:1.5;overflow:hidden}
-.app{display:flex;height:100vh}
+.shell{display:flex;flex-direction:column;height:100vh}
+/* ===== 自绘标题栏（替代系统深色标题栏） ===== */
+.titlebar{height:38px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;background:var(--surface);border-bottom:1px solid var(--border);-webkit-app-region:drag;user-select:none}
+.titlebar-title{display:flex;align-items:center;gap:8px;padding-left:14px;font-size:12.5px;font-weight:500;color:var(--text-2);letter-spacing:.01em}
+.titlebar-title svg{width:14px;height:14px;color:var(--accent)}
+.titlebar-controls{display:flex;height:100%;-webkit-app-region:no-drag}
+.win-btn{width:46px;height:100%;display:flex;align-items:center;justify-content:center;border:none;background:none;color:var(--text-2);cursor:pointer;transition:background .1s ease,color .1s ease}
+.win-btn svg{width:11px;height:11px}
+.win-btn:hover{background:var(--surface-2);color:var(--text)}
+.win-close:hover{background:#E5484D;color:#fff}
+.app{flex:1;display:flex;min-height:0}
 /* ===== 左侧栏 ===== */
 .side{width:224px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 12px}
 .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 16px}
-.brand-logo{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#0E7C66,#14A085);display:flex;align-items:center;justify-content:center;color:#fff}
+.brand-logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#F0805F,#D0512F);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 2px 8px rgba(208,81,47,.28)}
 .brand-logo svg{width:22px;height:22px}
 .brand-name{font-size:15px;font-weight:600;letter-spacing:-.01em}
 .brand-ver{font-size:11px;color:var(--text-3);margin-top:1px}
@@ -199,7 +217,7 @@ body{font-family:var(--font);background:var(--canvas);color:var(--text);font-siz
 .btn svg{width:15px;height:15px}
 .btn:active{transform:scale(.97)}
 .btn-primary{background:var(--accent);color:#fff}
-.btn-primary:hover{background:#0C6B58}
+.btn-primary:hover{background:var(--accent-strong)}
 .btn-ghost{background:var(--surface);color:var(--text);border:1px solid var(--border)}
 .btn-ghost:hover{background:var(--surface-2)}
 .content{flex:1;overflow-y:auto;padding:24px 28px}
@@ -219,10 +237,10 @@ body{font-family:var(--font);background:var(--canvas);color:var(--text);font-siz
 .section-more{font-size:12px;color:var(--text-3)}
 .field-label{font-size:12.5px;font-weight:600;color:var(--text-2)}
 .field-input{height:38px;padding:0 12px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;color:var(--text);background:#fff;outline:none;transition:border-color .12s ease,box-shadow .12s ease;box-sizing:border-box}
-.field-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(14,124,102,.12)}
+.field-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(194,78,46,.13)}
 .field-hint{font-size:12px;color:var(--text-3);line-height:1.7;margin:0}
 .cfg-msg{font-size:12.5px;font-weight:600}
-.drag-mask{position:fixed;inset:0;z-index:999;display:none;align-items:center;justify-content:center;background:rgba(14,124,102,.08);pointer-events:none}
+.drag-mask{position:fixed;inset:0;z-index:999;display:none;align-items:center;justify-content:center;background:rgba(194,78,46,.07);pointer-events:none}
 .drag-mask.show{display:flex}
 .drag-box{border:2px dashed var(--accent);border-radius:16px;background:var(--surface);padding:36px 60px;text-align:center;color:var(--accent);font-size:15px;font-weight:600;box-shadow:0 8px 32px rgba(0,0,0,.12)}
 .drag-box small{display:block;margin-top:6px;font-size:12px;font-weight:400;color:var(--text-2)}
@@ -231,7 +249,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px}
 th{text-align:left;padding:10px 18px;font-size:12px;font-weight:600;color:var(--text-2);border-bottom:1px solid var(--border);background:var(--surface-2);letter-spacing:.02em}
 td{padding:11px 18px;border-bottom:1px solid var(--border);vertical-align:middle}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:#FAFBFC}
+tr:hover td{background:#FCFAF8}
 .cell-main{font-weight:500}
 .cell-sub{color:var(--text-2);font-size:13px}
 .cell-mono{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;color:var(--text-2);font-variant-numeric:tabular-nums}
@@ -254,22 +272,39 @@ tr:hover td{background:#FAFBFC}
 .set-row:last-child{border-bottom:none}
 .set-label{color:var(--text-2)}
 .set-value{font-weight:500;text-align:right}
+/* ===== 功能总览卡 ===== */
+.feature-grid{display:flex;flex-direction:column;gap:2px;padding:10px 18px}
+.feature-item{display:flex;align-items:center;gap:12px;padding:10px 4px}
+.feature-item+.feature-item{border-top:1px solid var(--border)}
+.feature-ico{width:36px;height:36px;border-radius:10px;background:var(--accent-weak);color:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.feature-ico svg{width:17px;height:17px}
+.feature-name{font-size:13.5px;font-weight:600}
+.feature-desc{font-size:12.5px;color:var(--text-2);margin-top:2px;line-height:1.6}
 /* ===== 空态 ===== */
 .empty{padding:36px 18px;text-align:center}
 .empty p{color:var(--text-2);font-size:14px}
 .empty-sub{font-size:12.5px;color:var(--text-3);margin-top:4px}
 /* ===== 滚动条（浏览器表面也主题化） ===== */
 .content::-webkit-scrollbar{width:10px}
-.content::-webkit-scrollbar-thumb{background:#CFD6DC;border-radius:5px;border:2px solid var(--canvas)}
-.content::-webkit-scrollbar-thumb:hover{background:#B8C1C9}
-::selection{background:rgba(14,124,102,.16)}
+.content::-webkit-scrollbar-thumb{background:#DCD0C6;border-radius:5px;border:2px solid var(--canvas)}
+.content::-webkit-scrollbar-thumb:hover{background:#C8B8AC}
+::selection{background:rgba(194,78,46,.15)}
 </style>
 </head>
 <body>
-<div class="app">
+<div class="shell">
+  <div class="titlebar">
+    <div class="titlebar-title">${ICONS.alarm}<span>学习通自动签到 · v${esc(status.version || '3.1')}</span></div>
+    <div class="titlebar-controls">
+      <button class="win-btn" id="btnMin" title="最小化">${ICONS.winMin}</button>
+      <button class="win-btn" id="btnMax" title="最大化">${ICONS.winMax}</button>
+      <button class="win-btn win-close" id="btnClose" title="关闭（后台继续运行）">${ICONS.winClose}</button>
+    </div>
+  </div>
+  <div class="app">
   <aside class="side">
     <div class="brand">
-      <div class="brand-logo">${ICONS.check}</div>
+      <div class="brand-logo">${ICONS.alarm}</div>
       <div>
         <div class="brand-name">学习通自动签到</div>
         <div class="brand-ver">v${esc(status.version || '3.1')}</div>
@@ -359,9 +394,32 @@ tr:hover td{background:#FAFBFC}
           </div>
         </div>
         <div class="section">
-          <div class="section-head"><span class="section-title">说明</span></div>
-          <div style="padding:14px 18px;font-size:13px;color:var(--text-2);line-height:1.8">
-            支持普通、位置、二维码三种签到。二维码签到可把任意签到二维码图片直接拖入本窗口自动识别签到（二维码更新后拖入新码即可），也可点击右上角按钮或手机访问本机局域网地址上传。
+          <div class="section-head"><span class="section-title">支持的签到方式</span></div>
+          <div class="feature-grid">
+            <div class="feature-item">
+              <div class="feature-ico">${ICONS.check}</div>
+              <div>
+                <div class="feature-name">普通签到</div>
+                <div class="feature-desc">检测到老师发布签到后自动完成，无需任何操作</div>
+              </div>
+            </div>
+            <div class="feature-item">
+              <div class="feature-ico">${ICONS.location}</div>
+              <div>
+                <div class="feature-name">位置签到</div>
+                <div class="feature-desc">读取老师发布的位置坐标，在 10 米范围内自动生成签到点并完成</div>
+              </div>
+            </div>
+            <div class="feature-item">
+              <div class="feature-ico">${ICONS.qr}</div>
+              <div>
+                <div class="feature-name">二维码签到</div>
+                <div class="feature-desc">把任意签到二维码图片直接拖入本窗口即可自动识别签到，二维码更新后拖入新码即可</div>
+              </div>
+            </div>
+          </div>
+          <div style="padding:2px 18px 14px;font-size:12px;color:var(--text-3);line-height:1.7">
+            也可点击右上角「二维码签到」按钮，或手机在同一 Wi-Fi 下访问 <span class="cell-mono">http://电脑IP:${esc(String(status.port || '3456'))}/upload?type=qr</span> 上传。签到失败会自动重试，检测到拍照/手势类签到会推送提醒（请在学习通 APP 手动完成）。
           </div>
         </div>
       </section>
@@ -476,6 +534,28 @@ tr:hover td{background:#FAFBFC}
       })
       .catch(function(){msg.textContent='❌ 保存失败，请重试';msg.style.color='#B42318';saveBtn.disabled=false;saveBtn.textContent='保存账号'})
   })
+  // 自绘标题栏：窗口控制（最小化/最大化/关闭）
+  var wc=window.winCtl
+  if(wc){
+    var btnMin=document.getElementById('btnMin')
+    var btnMax=document.getElementById('btnMax')
+    var btnClose=document.getElementById('btnClose')
+    var icoMax='<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1"><rect x="2.5" y="2.5" width="7" height="7"/></svg>'
+    var icoRestore='<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1"><path d="M4.5 4.5V2.5h5v5h-2"/><rect x="2.5" y="4.5" width="5" height="5"/></svg>'
+    if(btnMin)btnMin.addEventListener('click',function(){wc.minimize()})
+    if(btnMax)btnMax.addEventListener('click',function(){wc.maximizeToggle()})
+    if(btnClose)btnClose.addEventListener('click',function(){wc.close()})
+    function syncMax(){
+      wc.isMaximized().then(function(m){
+        if(btnMax){btnMax.innerHTML=m?icoRestore:icoMax;btnMax.title=m?'还原':'最大化'}
+      }).catch(function(){})
+    }
+    window.addEventListener('resize',syncMax)
+    syncMax()
+  } else {
+    // 非 Electron（浏览器调试）时隐藏自绘标题栏
+    var tb=document.querySelector('.titlebar');if(tb)tb.style.display='none'
+  }
   poll()
   setInterval(poll,5000)
 })();

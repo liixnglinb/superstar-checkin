@@ -1,4 +1,4 @@
-// 截图验证脚本：启动应用 → 等待窗口加载 → 截取各页面 → 退出
+﻿// 截图验证脚本：启动应用 → 等待窗口加载 → 截取各页面 → 退出
 const { app, BrowserWindow } = require('electron')
 const fs = require('fs')
 const path = require('path')
@@ -34,7 +34,7 @@ async function shoot(name) {
 }
 
 async function openAndShoot() {
-  win = new BrowserWindow({ width: 1280, height: 820, show: false, backgroundColor: '#F4F6F8' })
+  win = new BrowserWindow({ width: 1280, height: 820, show: false, frame: false, backgroundColor: '#F6F4F1', webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'preload.js') } })
   await win.loadURL(CONSOLE_URL)
   await shoot('1-overview')
   await win.webContents.executeJavaScript(`document.querySelector('[data-view="courses"]').click()`)
@@ -53,3 +53,4 @@ app.whenReady().then(() => {
   try { require(path.join(__dirname, '..', 'build', 'index.js')) } catch (e) { console.error('service start fail:', e) }
   waitForService(60)
 })
+

@@ -1,0 +1,10 @@
+// 预加载脚本：向内置控制台安全暴露窗口控制能力（无边框自绘标题栏用）
+// 仅暴露最小化/最大化切换/关闭三个操作，不开放 Node 能力
+const { contextBridge, ipcRenderer } = require('electron')
+
+contextBridge.exposeInMainWorld('winCtl', {
+  minimize: () => ipcRenderer.send('win-minimize'),
+  maximizeToggle: () => ipcRenderer.send('win-maximize-toggle'),
+  close: () => ipcRenderer.send('win-close'),
+  isMaximized: () => ipcRenderer.invoke('win-is-maximized'),
+})
