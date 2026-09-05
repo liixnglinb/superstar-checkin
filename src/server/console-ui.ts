@@ -40,6 +40,8 @@ export interface ConsoleStatus {
   report?: { enabled: boolean; hour: number; weekly?: boolean }
   preCheck?: { enabled: boolean; hour: number }
   smartPoll?: { enabled: boolean; dayStart: number; dayEnd: number; nightMultiplier: number }
+  humanDelay?: { enabled: boolean; minSeconds: number; maxSeconds: number }
+  confirmBefore?: { enabled: boolean; waitSeconds: number }
 }
 
 const ICONS = {
@@ -248,6 +250,22 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
         <label class="field-label" for="setVerify" style="width:104px">签到后二次核对</label>
         <button class="switch ${status.verifyEnabled === false ? '' : 'on'}" id="setVerify" type="button" role="switch"><span class="knob"></span></button>
         <span class="field-hint" style="line-height:1.5">提交成功后再次查询平台确认已签到，避免"显示成功实际没签上"（默认开启）</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setHumanDelay" style="width:104px">模拟人类延迟</label>
+        <button class="switch ${status.humanDelay?.enabled ? 'on' : ''}" id="setHumanDelay" type="button" role="switch"><span class="knob"></span></button>
+        <span class="field-hint" style="line-height:1.5">检测到签到后随机等待一段时间再提交，避免秒签被怀疑</span>
+        <input type="number" id="setHumanDelayMin" min="5" max="600" value="${status.humanDelay?.minSeconds ?? 30}" style="width:52px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+        <span class="field-hint">~</span>
+        <input type="number" id="setHumanDelayMax" min="10" max="900" value="${status.humanDelay?.maxSeconds ?? 300}" style="width:52px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+        <span class="field-hint">秒</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setConfirmBefore" style="width:104px">签到前确认</label>
+        <button class="switch ${status.confirmBefore?.enabled ? 'on' : ''}" id="setConfirmBefore" type="button" role="switch"><span class="knob"></span></button>
+        <span class="field-hint" style="line-height:1.5">检测到签到后先弹通知倒计时，可点击取消，超时自动签</span>
+        <input type="number" id="setConfirmWait" min="3" max="120" value="${status.confirmBefore?.waitSeconds ?? 10}" style="width:52px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+        <span class="field-hint">秒</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <label class="field-label" for="setWeeklyReport" style="width:104px">每周签到周报</label>
@@ -557,6 +575,21 @@ tr:hover td{background:#FCFAF8}
 .badge-off{background:var(--surface-3);color:var(--text-3)}
 .badge-retired{background:#eee;color:#999}
 .grid-empty{grid-column:1/-1;text-align:center;color:var(--text-3);padding:40px 0;font-size:13px}
+.course-note{font-size:11px;color:var(--accent);background:var(--accent-weak);padding:3px 8px;border-radius:6px;margin:6px 0;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.course-note:hover{background:var(--accent);color:#fff}
+.detail-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center}
+.detail-modal-box{background:var(--surface);border-radius:12px;width:90%;max-width:600px;max-height:80vh;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.detail-modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.detail-modal-title{font-size:15px;font-weight:600;color:var(--text)}
+.detail-modal-close{background:none;border:none;font-size:20px;color:var(--text-3);cursor:pointer;padding:4px 8px}
+.detail-modal-body{padding:14px 18px;overflow-y:auto;max-height:calc(80vh - 60px)}
+.fav-list{display:flex;flex-direction:column;gap:8px;padding:8px 0}
+.fav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--surface-2);border-radius:8px;border:1px solid var(--border)}
+.fav-name{font-size:13px;font-weight:600;color:var(--text);flex:1}
+.fav-coord{font-size:11px;color:var(--text-3);font-family:monospace}
+.fav-del{background:none;border:none;color:#d45050;cursor:pointer;font-size:12px;padding:2px 6px}
+.fav-add-form{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.fav-add-form input{padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px}
 /* 多账号统计 */
 .acct-stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;padding:12px 18px}
 .acct-stat-card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
@@ -1312,7 +1345,7 @@ tr:hover td{background:#FCFAF8}
       pollInterval:poll,pollJitter:jitter,retryMaxAttempts:retry,retryDelayMs:retryDelay*1000,
       locationRadius:radius,desktop:desktop,quietEnabled:quietOn,quietStart:qs,quietEnd:qe,
 
-      reportEnabled:reportOn,reportHour:reportHour,verifyEnabled:verify,weeklyReport:document.getElementById('setWeeklyReport').classList.contains('on'),preCheckEnabled:document.getElementById('setPreCheck').classList.contains('on'),preCheckHour:document.getElementById('setPreCheckHour').value,smartPollEnabled:document.getElementById('setSmartPoll').classList.contains('on')
+      reportEnabled:reportOn,reportHour:reportHour,verifyEnabled:verify,weeklyReport:document.getElementById('setWeeklyReport').classList.contains('on'),preCheckEnabled:document.getElementById('setPreCheck').classList.contains('on'),preCheckHour:document.getElementById('setPreCheckHour').value,smartPollEnabled:document.getElementById('setSmartPoll').classList.contains('on'),humanDelayEnabled:document.getElementById('setHumanDelay').classList.contains('on'),humanDelayMin:document.getElementById('setHumanDelayMin').value,humanDelayMax:document.getElementById('setHumanDelayMax').value,confirmBeforeEnabled:document.getElementById('setConfirmBefore').classList.contains('on'),confirmBeforeWait:document.getElementById('setConfirmWait').value
 
     })})
       .then(function(r){return r.json()})
@@ -1329,7 +1362,7 @@ tr:hover td{background:#FCFAF8}
     if(el)el.addEventListener('click',function(){el.classList.toggle('on')})
   }
 
-  bindSwitch('setDesktop');bindSwitch('setQuiet');bindSwitch('setReport');bindSwitch('setVerify');bindSwitch('setWeeklyReport');bindSwitch('setPreCheck');bindSwitch('setSmartPoll')
+  bindSwitch('setDesktop');bindSwitch('setQuiet');bindSwitch('setReport');bindSwitch('setVerify');bindSwitch('setWeeklyReport');bindSwitch('setPreCheck');bindSwitch('setSmartPoll');bindSwitch('setHumanDelay');bindSwitch('setConfirmBefore')
   // 配置导出
   var cfgExportBtn=document.getElementById('cfgExportBtn')
   if(cfgExportBtn)cfgExportBtn.addEventListener('click',function(){
@@ -1514,9 +1547,11 @@ tr:hover td{background:#FCFAF8}
   function loadSchedule(){
     var grid=document.getElementById('scheduleGrid');if(!grid)return
     grid.innerHTML='<div class="grid-empty">加载中...</div>'
-    fetch('/api/schedule').then(function(r){return r.json()}).then(function(d){
+    Promise.all([fetch('/api/schedule').then(function(r){return r.json()}),fetch('/api/course-notes').then(function(r){return r.json()}).catch(function(){return{notes:{}}})]).then(function(results){
+      var d=results[0],notesData=results[1]
       if(!d.ok||!d.schedule){grid.innerHTML='<div class="grid-empty">加载失败</div>';return}
       var list=d.schedule
+      var notes=notesData.notes||{}
       var total=list.length,watching=list.filter(function(c){return c.watching&&!c.isRetired}).length,retired=list.filter(function(c){return c.isRetired}).length
       var succ=list.reduce(function(a,c){return a+(c.success||0)},0),fail=list.reduce(function(a,c){return a+(c.fail||0)},0)
       document.getElementById('schTotal').textContent=total
@@ -1528,8 +1563,32 @@ tr:hover td{background:#FCFAF8}
       grid.innerHTML=list.map(function(c){
         var badge=c.isRetired?'<span class="course-card-badge badge-retired">已结课</span>':(c.watching?'<span class="course-card-badge badge-on">监听中</span>':'<span class="course-card-badge badge-off">已停用</span>')
         var cls='course-card'+(c.watching&&!c.isRetired?' watching':'')+(c.isRetired?' retired':'')
-        return '<div class="'+cls+'" data-cid="'+esc(c.courseId)+'">'+badge+'<div class="course-card-name">'+esc(c.courseName)+'</div><div class="course-card-teacher">'+esc(c.teacherName||'未知老师')+'</div><div class="course-card-stats"><span class="course-card-stat-ok">成功 '+(c.success||0)+'</span><span class="course-card-stat-fail">失败 '+(c.fail||0)+'</span></div></div>'
+        var note=notes[c.courseId]?'<div class="course-note" title="点击编辑备注">📝 '+esc(notes[c.courseId])+'</div>':''
+        return '<div class="'+cls+'" data-cid="'+esc(c.courseId)+'" data-cname="'+esc(c.courseName)+'">'+badge+'<div class="course-card-name">'+esc(c.courseName)+'</div><div class="course-card-teacher">'+esc(c.teacherName||'未知老师')+'</div>'+note+'<div class="course-card-stats"><span class="course-card-stat-ok">成功 '+(c.success||0)+'</span><span class="course-card-stat-fail">失败 '+(c.fail||0)+'</span><button class="btn btn-ghost btn-sm detail-btn" data-cname="'+esc(c.courseName)+'" style="margin-left:auto;padding:2px 8px;font-size:11px">详情</button></div></div>'
       }).join('')
+      // 备注点击编辑
+      grid.querySelectorAll('.course-note').forEach(function(el){
+        el.addEventListener('click',function(e){
+          e.stopPropagation()
+          var card=el.closest('.course-card')
+          var cid=card.dataset.cid
+          var cname=card.dataset.cname
+          var cur=notes[cid]||''
+          var val=prompt(cname+' 的备注：',cur)
+          if(val!==null){
+            var payload={};payload[cid]=val.trim()
+            fetch('/api/course-notes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(function(){loadSchedule()})
+          }
+        })
+      })
+      // 详情按钮
+      grid.querySelectorAll('.detail-btn').forEach(function(btn){
+        btn.addEventListener('click',function(e){
+          e.stopPropagation()
+          showCourseDetail(btn.dataset.cname)
+        })
+      })
+      // 卡片点击切换监听
       grid.querySelectorAll('.course-card').forEach(function(card){
         card.addEventListener('click',function(){
           var cid=card.dataset.cid
@@ -1542,7 +1601,27 @@ tr:hover td{background:#FCFAF8}
     }).catch(function(){grid.innerHTML='<div class="grid-empty">加载失败，请检查服务状态</div>'})
   }
 
-  function loadLogs(){
+  // 课程签到详情弹窗
+  function showCourseDetail(courseName){
+    var modal=document.getElementById('courseDetailModal')
+    if(!modal)return
+    modal.style.display='flex'
+    document.getElementById('detailTitle').textContent=courseName+' - 签到记录'
+    document.getElementById('detailBody').innerHTML='<div style="text-align:center;padding:30px;color:var(--text-3)">加载中...</div>'
+    fetch('/api/course-detail?course='+encodeURIComponent(courseName)).then(function(r){return r.json()}).then(function(d){
+      if(!d.ok||!d.records||d.records.length===0){
+        document.getElementById('detailBody').innerHTML='<div style="text-align:center;padding:30px;color:var(--text-3)">暂无签到记录</div>'
+        return
+      }
+      var rows=d.records.map(function(r){
+        var ok=/成功|✅|已签到/.test(r.result||'')
+        return '<tr><td class="cell-mono">'+esc(r.time||'')+'</td><td>'+esc(r.type||'普通')+'</td><td>'+esc(r.account||'')+'</td><td><span class="pill '+(ok?'pill-ok':'pill-off')+'">'+esc(r.result||'')+'</span></td></tr>'
+      }).join('')
+      document.getElementById('detailBody').innerHTML='<div style="margin-bottom:10px;font-size:12px;color:var(--text-3)">共 '+d.total+' 条记录（最近100条）</div><table><thead><tr><th>时间</th><th>类型</th><th>账号</th><th>结果</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    }).catch(function(){document.getElementById('detailBody').innerHTML='<div style="text-align:center;padding:30px;color:var(--text-3)">加载失败</div>'})
+  }
+
+function loadLogs(){
     var box=document.getElementById('logBox')
     if(!box)return
     fetch('/api/logs?lines=200')

@@ -318,6 +318,23 @@ export class DingTalkServer {
               enabled: !!body.smartPollEnabled,
             }
           }
+          // 模拟人类延迟
+          if (body.humanDelayEnabled !== undefined || body.humanDelayMin !== undefined || body.humanDelayMax !== undefined) {
+            existing.checkin = existing.checkin || {}
+            existing.checkin.humanDelay = {
+              enabled: body.humanDelayEnabled !== undefined ? !!body.humanDelayEnabled : !!((existing.checkin.humanDelay || {}).enabled),
+              minSeconds: body.humanDelayMin !== undefined && body.humanDelayMin !== null && body.humanDelayMin !== '' ? Math.max(5, Number(body.humanDelayMin) || 30) : ((existing.checkin.humanDelay || {}).minSeconds || 30),
+              maxSeconds: body.humanDelayMax !== undefined && body.humanDelayMax !== null && body.humanDelayMax !== '' ? Math.max(10, Number(body.humanDelayMax) || 300) : ((existing.checkin.humanDelay || {}).maxSeconds || 300),
+            }
+          }
+          // 签到前确认
+          if (body.confirmBeforeEnabled !== undefined || body.confirmBeforeWait !== undefined) {
+            existing.checkin = existing.checkin || {}
+            existing.checkin.confirmBefore = {
+              enabled: body.confirmBeforeEnabled !== undefined ? !!body.confirmBeforeEnabled : !!((existing.checkin.confirmBefore || {}).enabled),
+              waitSeconds: body.confirmBeforeWait !== undefined && body.confirmBeforeWait !== null && body.confirmBeforeWait !== '' ? Math.max(3, Number(body.confirmBeforeWait) || 10) : ((existing.checkin.confirmBefore || {}).waitSeconds || 10),
+            }
+          }
           fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
           logger.info('运行设置已保存，重启后生效')
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
@@ -445,6 +462,130 @@ export class DingTalkServer {
         } catch (e: any) {
           res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
           res.end(JSON.stringify({ ok: false, message: '获取课表失败: ' + e.message }))
+        }
+        return
+      }
+
+      // 取消签到：用户点击通知里的取消链接
+      if (req.method === 'GET' && (req.url||'').startsWith('/api/confirm/cancel')) {
+        try {
+          const u = new URL(req.url || '', 'http://localhost')
+          const aid = u.searchParams.get('aid') || ''
+          if (aid) {
+            ;(this as any)._cancelledAids = (this as any)._cancelledAids || new Set()
+            ;(this as any)._cancelledAids.add(aid)
+            logger.info('用户取消签到: aid=' + aid)
+          }
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+          res.end('<html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f6f4f1"><div style="text-align:center;padding:40px;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08)"><div style="font-size:48px;margin-bottom:12px">✋</div><h2 style="color:#333;margin:0 0 8px">已取消签到</h2><p style="color:#888;margin:0">可以关闭此页面了</p></div></body></html>')
+        } catch (e: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: e.message }))
+        }
+        return
+      }
+
+      // 课程备注：获取
+      if (req.method === 'GET' && req.url === '/api/course-notes') {
+        try {
+          const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+          const existing = fs.existsSync(cfgFile) ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {} : {}
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, notes: existing.courseNotes || {} }))
+        } catch (e: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: e.message }))
+        }
+        return
+      }
+
+      // 课程备注：保存
+      if (req.method === 'POST' && req.url === '/api/course-notes') {
+        let bodyStr = ''
+        req.on('data', (c) => { bodyStr += c })
+        req.on('end', () => {
+          try {
+            const body = JSON.parse(bodyStr)
+            const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+            const existing = fs.existsSync(cfgFile) ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {} : {}
+            existing.courseNotes = { ...(existing.courseNotes || {}), ...body }
+            for (const k of Object.keys(existing.courseNotes)) {
+              if (!existing.courseNotes[k] || String(existing.courseNotes[k]).trim() === '') delete existing.courseNotes[k]
+            }
+            fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: true, message: '备注已保存' }))
+          } catch (e: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: false, message: e.message }))
+          }
+        })
+        return
+      }
+
+      // 位置收藏：获取
+      if (req.method === 'GET' && req.url === '/api/geo-favorites') {
+        try {
+          const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+          const existing = fs.existsSync(cfgFile) ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {} : {}
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, favorites: (existing.geo && existing.geo.favorites) || [] }))
+        } catch (e: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: e.message }))
+        }
+        return
+      }
+
+      // 位置收藏：保存/删除
+      if (req.method === 'POST' && req.url === '/api/geo-favorites') {
+        let bodyStr = ''
+        req.on('data', (c) => { bodyStr += c })
+        req.on('end', () => {
+          try {
+            const body = JSON.parse(bodyStr)
+            const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+            const existing = fs.existsSync(cfgFile) ? YAML.parse(fs.readFileSync(cfgFile, 'utf-8')) || {} : {}
+            existing.geo = existing.geo || {}
+            if (body.action === 'delete') {
+              existing.geo.favorites = (existing.geo.favorites || []).filter((f: any) => f.name !== body.name)
+            } else {
+              existing.geo.favorites = existing.geo.favorites || []
+              const idx = existing.geo.favorites.findIndex((f: any) => f.name === body.name)
+              if (idx >= 0) existing.geo.favorites[idx] = { name: body.name, lat: Number(body.lat), lng: Number(body.lng) }
+              else existing.geo.favorites.push({ name: body.name, lat: Number(body.lat), lng: Number(body.lng) })
+            }
+            fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: true, favorites: existing.geo.favorites }))
+          } catch (e: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: false, message: e.message }))
+          }
+        })
+        return
+      }
+
+      // 课程签到详情：获取某门课的所有签到记录
+      if (req.method === 'GET' && (req.url||'').startsWith('/api/course-detail')) {
+        try {
+          const u = new URL(req.url || '', 'http://localhost')
+          const courseName = decodeURIComponent(u.searchParams.get('course') || '')
+          const history = this.historyProvider ? this.historyProvider() : []
+          const records = history.filter((r: any) => (r.courseName || '') === courseName)
+            .slice(0, 100)
+            .map((r: any) => ({
+              time: r.time || '',
+              type: r.type || '',
+              result: r.message || r.result || '',
+              account: r.accountName || r.account || '',
+              timestamp: r.timestamp || 0,
+            }))
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, courseName, records, total: records.length }))
+        } catch (e: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: e.message }))
         }
         return
       }

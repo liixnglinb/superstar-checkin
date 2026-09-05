@@ -142,6 +142,10 @@ export interface AppConfig {
     retry: { maxAttempts: number; delayMs: number }
     /** 签到后二次核对：提交成功后查询平台确认已签到（默认开启） */
     verify?: { enabled: boolean }
+    /** 模拟人类延迟：检测到签到后随机等待一段时间再提交，避免秒签被怀疑 */
+    humanDelay?: { enabled: boolean; minSeconds: number; maxSeconds: number }
+    /** 签到前确认：检测到签到后先弹通知倒计时，用户可取消，超时自动签 */
+    confirmBefore?: { enabled: boolean; waitSeconds: number }
     antiDetect: {
       enabled: boolean
       randomDelay: boolean
@@ -157,6 +161,8 @@ export interface AppConfig {
     }
     /** 位置签到半径（米）：以老师发布坐标为中心生成签到点，默认 10 */
     locationRadius?: number
+    /** 常用位置收藏：位置签到时一键切换 */
+    favorites?: Array<{ name: string; lat: number; lng: number }>
   }
   notify: {
     channels: NotifyChannel[]
@@ -179,6 +185,8 @@ export interface AppConfig {
     /** 每周签到周报：每周日推送本周统计（默认开启） */
     weekly?: boolean
   }
+  /** 课程备注：courseId -> 备注文本 */
+  courseNotes?: Record<string, string>
   /** 每日课前预检查：每天固定时间检查 Cookie 有效性和网络连通性，有问题提前推送 */
   preCheck?: {
     enabled: boolean

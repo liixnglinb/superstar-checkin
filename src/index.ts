@@ -178,6 +178,8 @@ async function main() {
         trend,
         preCheck: config.preCheck,
         smartPoll: config.smartPoll,
+        humanDelay: config.checkin?.humanDelay,
+        confirmBefore: config.checkin?.confirmBefore,
         recent,
         recordCount: history.length,
         successCount,
@@ -362,6 +364,36 @@ async function main() {
         return
       }
 
+      // 签到前确认：先弹通知倒计时，用户可取消，超时自动签
+      let confirmed = true
+      if (config.checkin.confirmBefore?.enabled) {
+        const waitSec = Math.max(3, config.checkin.confirmBefore.waitSeconds || 10)
+        const cancelUrl = (config.dingtalk?.publicUrl || `http://127.0.0.1:${config.dingtalk?.port || 3456}`) + '/api/confirm/cancel?aid=' + encodeURIComponent(aid)
+        cancelledAids.delete(aid)
+        await notifier.notify(
+          `⏳ ${courseName} - 即将自动签到`,
+          `检测到签到活动，${waitSec} 秒后自动签到\n不想签？点击取消：${cancelUrl}`,
+        ).catch(() => {})
+        logger.info(`${courseName} 签到确认中：等待 ${waitSec} 秒，用户可取消`)
+        await new Promise(r => setTimeout(r, waitSec * 1000))
+        if (cancelledAids.has(aid)) {
+          cancelledAids.delete(aid)
+          logger.warn(`${courseName} 用户取消了签到`)
+          await notifier.notify(`已取消签到`, `${courseName} 的签到已取消（aid: ${aid}）`).catch(() => {})
+          markProcessed(aid)
+          return
+        }
+      }
+
+      // 模拟人类延迟：随机等待一段时间再提交，避免秒签被怀疑
+      if (config.checkin.humanDelay?.enabled) {
+        const min = Math.max(5, config.checkin.humanDelay.minSeconds || 30)
+        const max = Math.max(min, config.checkin.humanDelay.maxSeconds || 300)
+        const delay = Math.floor(Math.random() * (max - min + 1) + min)
+        logger.info(`${courseName} 模拟人类延迟：等待 ${delay} 秒后签到`)
+        await new Promise(r => setTimeout(r, delay * 1000))
+      }
+
       const results = await checkinHandler.handle(aid, courseId, classId, courseName, checkinInfo)
       const summary = results.map(r => `${r.accountName}: ${r.success ? '✅' : '❌'} ${r.message}`).join('\n')
       await notifier.notify(`✅ ${courseName} 签到结果`, summary)
@@ -379,6 +411,7 @@ async function main() {
   }
 
   // 8. 启动监听器
+  const cancelledAids = new Set<string>()
   let imListener: ImListener | null = null
   if (config.listener.mode === 'im' || config.listener.mode === 'hybrid') {
     imListener = new ImListener()
