@@ -68,6 +68,7 @@
       "build/**/*",
       "electron/**/*",
       "assets/app-icon.ico",
+      "assets/app-icon.png",
       "!node_modules/tencentcloud-sdk-nodejs/**",
       "!node_modules/sharp/**",
       "!node_modules/nodemailer/**",

@@ -367,8 +367,10 @@ body{font-family:var(--font);background:var(--canvas);color:var(--text);font-siz
 /* ===== 左侧栏 ===== */
 .side{width:224px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 12px}
 .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 16px}
-.brand-logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#F0805F,#D0512F);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 2px 8px rgba(208,81,47,.28)}
+.brand-logo{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.15)}
 .brand-logo svg{width:22px;height:22px}
+.brand-logo-img{width:100%;height:100%;border-radius:9px;object-fit:cover;display:block}
+.titlebar-icon{width:18px;height:18px;border-radius:5px;object-fit:cover;display:inline-block;vertical-align:middle;margin-right:6px}
 .brand-name{font-size:15px;font-weight:600;letter-spacing:-.01em}
 .brand-ver{font-size:11px;color:var(--text-3);margin-top:1px}
 .nav{display:flex;flex-direction:column;gap:2px;flex:1}
@@ -601,7 +603,7 @@ tr:hover td{background:#FCFAF8}
 <body>
 <div class="shell">
   <div class="titlebar">
-    <div class="titlebar-title">${ICONS.alarm}<span>学习通自动签到 · v${esc(status.version || '3.1')}</span></div>
+    <div class="titlebar-title"><img src="/assets/app-icon.png" class="titlebar-icon" alt=""><span>学习通自动签到 · v${esc(status.version || '3.1')}</span></div>
     <div class="titlebar-controls">
       <button class="win-btn" id="btnMin" title="最小化">${ICONS.winMin}</button>
       <button class="win-btn" id="btnMax" title="最大化">${ICONS.winMax}</button>
@@ -611,7 +613,7 @@ tr:hover td{background:#FCFAF8}
   <div class="app">
   <aside class="side">
     <div class="brand">
-      <div class="brand-logo">${ICONS.alarm}</div>
+      <div class="brand-logo"><img src="/assets/app-icon.png" class="brand-logo-img" alt=""></div>
       <div>
         <div class="brand-name">学习通自动签到</div>
         <div class="brand-ver">v${esc(status.version || '3.1')}</div>

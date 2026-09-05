@@ -110,7 +110,22 @@ export class DingTalkServer {
         return
       }
 
-      // 健康检查
+      // 图标静态资源（软件界面 logo 用）
+    if (req.method === 'GET' && (req.url === '/assets/app-icon.png' || req.url === '/icon.png')) {
+      try {
+        const iconPath = require('path').join(process.cwd(), 'assets', 'app-icon.png')
+        if (fs.existsSync(iconPath)) {
+          const data = fs.readFileSync(iconPath)
+          res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' })
+          res.end(data)
+        } else {
+          res.writeHead(404); res.end()
+        }
+      } catch (e) { res.writeHead(500); res.end() }
+      return
+    }
+
+    // 健康检查
       if (req.method === 'GET' && req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }))
