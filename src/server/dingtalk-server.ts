@@ -302,6 +302,22 @@ export class DingTalkServer {
               weekly: !!body.weeklyReport,
             }
           }
+          // 每日课前预检查
+          if (body.preCheckEnabled !== undefined || body.preCheckHour !== undefined) {
+            existing.preCheck = {
+              enabled: body.preCheckEnabled !== undefined ? !!body.preCheckEnabled : !!((existing.preCheck || {}).enabled),
+              hour: body.preCheckHour !== undefined && body.preCheckHour !== null && body.preCheckHour !== ''
+                ? Math.max(0, Math.min(23, Number(body.preCheckHour) || 7))
+                : ((existing.preCheck || {}).hour || 7),
+            }
+          }
+          // 智能轮询
+          if (body.smartPollEnabled !== undefined) {
+            existing.smartPoll = {
+              ...(existing.smartPoll || { dayStart: 8, dayEnd: 22, nightMultiplier: 3 }),
+              enabled: !!body.smartPollEnabled,
+            }
+          }
           fs.writeFileSync(cfgFile, YAML.stringify(existing), 'utf-8')
           logger.info('运行设置已保存，重启后生效')
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
@@ -363,6 +379,72 @@ export class DingTalkServer {
           logger.error(`读取日志失败: ${e.message}`)
           res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
           res.end(JSON.stringify({ ok: false, message: `读取日志失败: ${e.message}` }))
+        }
+        return
+      }
+
+      // 配置导出
+      if (req.method === 'GET' && req.url === '/api/config/export') {
+        try {
+          const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+          const raw = YAML.parse(fs.readFileSync(cfgFile, 'utf-8'))
+          const safe = JSON.parse(JSON.stringify(raw))
+          if (safe.accounts) for (const acc of safe.accounts) delete acc.password
+          if (safe.dingtalk) { delete safe.dingtalk.appSecret; delete safe.dingtalk.token }
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="checkin-config.json"' })
+          res.end(JSON.stringify(safe, null, 2))
+        } catch (e: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: '导出失败: ' + e.message }))
+        }
+        return
+      }
+
+      // 配置导入
+      if (req.method === 'POST' && req.url === '/api/config/import') {
+        const cfgFile = process.env.CONFIG_FILE || 'config.yaml'
+        let bodyStr = ''
+        req.on('data', (c) => { bodyStr += c })
+        req.on('end', () => {
+          try {
+            const imported = JSON.parse(bodyStr)
+            const existing = YAML.parse(fs.readFileSync(cfgFile, 'utf-8'))
+            const merged = { ...existing, ...imported }
+            if (existing.accounts) merged.accounts = existing.accounts
+            if (existing.dingtalk?.appSecret) merged.dingtalk = { ...merged.dingtalk, appSecret: existing.dingtalk.appSecret }
+            if (existing.dingtalk?.token) merged.dingtalk = { ...merged.dingtalk, token: existing.dingtalk.token }
+            fs.writeFileSync(cfgFile, YAML.stringify(merged), 'utf-8')
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: true, message: '配置已导入，重启后生效' }))
+          } catch (e: any) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' })
+            res.end(JSON.stringify({ ok: false, message: '导入失败: ' + e.message }))
+          }
+        })
+        return
+      }
+
+      // 课表数据
+      if (req.method === 'GET' && req.url === '/api/schedule') {
+        try {
+          const status = this.statusProvider ? this.statusProvider() : {}
+          const courses = (status as any).courses || []
+          const watchCourses = (status as any).watchCourses || []
+          const courseStats = (status as any).courseStats || []
+          const courseHealth = (status as any).courseHealth || {}
+          const wset = new Set(watchCourses.map(String))
+          const allOn = watchCourses.length === 0
+          const statsMap: Map<string, { success: number; fail: number }> = new Map(courseStats.map((s: any) => [s.course, s]))
+          const schedule = courses.map((c: any) => {
+            const cid = String(c.courseId)
+            const st = statsMap.get(c.courseName) || { success: 0, fail: 0 }
+            return { courseId: cid, classId: c.classId, courseName: c.courseName, teacherName: c.teacherName || '', watching: allOn || wset.has(cid), isRetired: c.isRetired || false, success: st.success, fail: st.fail, healthFail: courseHealth[cid] || 0 }
+          })
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: true, schedule }))
+        } catch (e: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.end(JSON.stringify({ ok: false, message: '获取课表失败: ' + e.message }))
         }
         return
       }

@@ -107,6 +107,12 @@ export class PollListener {
     this.timer = setTimeout(chain, this.interval)
   }
 
+  /** 动态调整轮询间隔（毫秒）：智能轮询在白天/夜间切换时调用，下一轮生效 */
+  setInterval(intervalMs: number) {
+    this.interval = Math.max(5000, intervalMs)
+    logger.info('轮询间隔已调整为 ' + (this.interval / 1000) + 's')
+  }
+
   stop() {
     if (this.timer) {
       clearInterval(this.timer)

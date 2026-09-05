@@ -9,6 +9,8 @@ export interface CourseInfo {
   courseName: string
   teacherName: string
   imageUrl: string
+  /** 课程是否已结课/退休（学习通 isretire=1），结课后自动停用监听 */
+  isRetired?: boolean
 }
 
 /** 把接口异常响应转成简洁可读的错误消息，避免整页 HTML 刷爆日志 */
@@ -91,6 +93,7 @@ export async function getCourseList(cookie: string): Promise<CourseInfo[]> {
         courseName: data.name || data.courseName || '未知课程',
         teacherName: data.teacherfactor || data.teacherName || '',
         imageUrl: data.imageurl || '',
+        isRetired: channel.content.isretire === 1,
       })
     }
 

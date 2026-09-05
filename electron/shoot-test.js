@@ -44,6 +44,8 @@ async function openAndShoot() {
   await shoot('1-overview')
   await win.webContents.executeJavaScript(`document.querySelector('[data-view="courses"]').click()`)
   await shoot('2-courses')
+  await win.webContents.executeJavaScript(`document.querySelector('[data-view="schedule"]').click()`)
+  await shoot('2b-schedule')
   await win.webContents.executeJavaScript(`document.querySelector('[data-view="history"]').click()`)
   await shoot('3-history')
   await win.webContents.executeJavaScript(`document.querySelector('[data-view="logs"]').click()`)

@@ -43,6 +43,8 @@ const DEFAULT_CONFIG: Partial<AppConfig> = {
     quiet: { enabled: false, start: '23:00', end: '07:00' },
   },
   report: { enabled: true, hour: DEFAULTS.REPORT_HOUR, weekly: true },
+  preCheck: { enabled: true, hour: 7 },
+  smartPoll: { enabled: true, dayStart: 8, dayEnd: 22, nightMultiplier: 3 },
   dingtalk: {
     appKey: '',
     appSecret: '',

@@ -24,6 +24,9 @@ import {
 } from './providers/sign-state'
 import type { ImMessage, CheckinInfo } from './types'
 import { DEFAULTS } from './constants'
+import YAML from 'yaml'
+import axios from 'axios'
+import { encryptPassword, isEncrypted } from './utils/crypto'
 
 import * as readline from 'readline'
 import * as fs from 'fs'
@@ -66,6 +69,22 @@ async function main() {
 
   // 2. 初始化
   logger.configure(config.log.level, config.log.file)
+  /** 保存配置到 config.yaml（密码自动 DPAPI 加密） */
+  function saveConfig(cfg: any) {
+    try {
+      const toSave = JSON.parse(JSON.stringify(cfg))
+      for (const acc of toSave.accounts || []) {
+        if (acc.password && !isEncrypted(acc.password)) {
+          acc.password = encryptPassword(acc.password)
+        }
+      }
+      fs.writeFileSync('config.yaml', YAML.stringify(toSave), 'utf-8')
+      logger.info('配置已保存到 config.yaml')
+    } catch (e: any) {
+      logger.error('保存配置失败: ' + e.message)
+    }
+  }
+
   initStorage(config.storage.dataDir)
   initLocationStore(config.storage.dataDir)
   setProxy(config.proxy) // 代理全局生效（登录/签到请求均可走）
@@ -98,6 +117,17 @@ async function main() {
         success: s.success,
         fail: s.fail,
       }))
+      // 多账号独立统计（每个账号的成功/失败/最近签到时间）
+      const acctStatsMap = new Map<string, { username: string; name: string; success: number; fail: number; lastTime: number }>()
+      for (const r of history as any[]) {
+        const uname = r.account || r.accountName || '未知账号'
+        const e = acctStatsMap.get(uname) || { username: uname, name: uname, success: 0, fail: 0, lastTime: 0 }
+        if (okRe.test(r.message || r.result)) e.success++
+        else e.fail++
+        if ((r.timestamp || 0) > e.lastTime) e.lastTime = r.timestamp || 0
+        acctStatsMap.set(uname, e)
+      }
+      const accountStats = Array.from(acctStatsMap.values())
       // 签到趋势（近 14 天逐日成功/失败，供总览页图表）
       const trend: Array<{ date: string; success: number; fail: number }> = []
       const dayMap = new Map<string, { success: number; fail: number }>()
@@ -144,7 +174,10 @@ async function main() {
         watchCourses: config.watchCourses || [],
         courseHealth: Object.fromEntries(courseHealth),
         courseStats,
+        accountStats,
         trend,
+        preCheck: config.preCheck,
+        smartPoll: config.smartPoll,
         recent,
         recordCount: history.length,
         successCount,
@@ -176,6 +209,16 @@ async function main() {
     try {
       const fresh = await getCourseList(primaryMeta.cookie)
       courses = fresh
+      // 结课自动停用：已退休课程从监听列表移除，避免无效轮询和误报
+      const retiredIds = fresh.filter(c => c.isRetired).map(c => String(c.courseId))
+      if (retiredIds.length > 0 && config.watchCourses && config.watchCourses.length > 0) {
+        const before = config.watchCourses.length
+        config.watchCourses = config.watchCourses.filter(id => !retiredIds.includes(String(id)))
+        if (config.watchCourses.length < before) {
+          logger.info('结课自动停用：已移除 ' + (before - config.watchCourses.length) + ' 门已结课课程的监听')
+          saveConfig(config)
+        }
+      }
       applyWatchFilter()
       if (pollListener) pollListener.stop()
       if (config.listener.mode === 'poll' || config.listener.mode === 'hybrid') {
@@ -496,6 +539,21 @@ async function main() {
       } else {
         content += '，全部成功 🎉'
       }
+      // 漏签预警：监听中的课程最近 3 天零签到
+      try {
+        const threeDaysAgo = new Date()
+        threeDaysAgo.setDate(threeDaysAgo.getDate() - 3)
+        threeDaysAgo.setHours(0, 0, 0, 0)
+        const recentNames = new Set(
+          history.filter((r: any) => (r.timestamp || 0) >= threeDaysAgo.getTime()).map((r: any) => r.courseName)
+        )
+        const watchedNames = new Set(watchedCourses.map(c => c.courseName))
+        const missed = Array.from(watchedNames).filter(n => !recentNames.has(n))
+        if (missed.length > 0) {
+          content += '\n\n⚠️ 漏签预警（近3天监听但零签到）：\n' + missed.slice(0, 8).map(n => '· ' + n).join('\n')
+          if (missed.length > 8) content += '\n· 等共 ' + missed.length + ' 门'
+        }
+      } catch (e: any) { logger.warn('漏签预警计算失败: ' + e.message) }
       await notifier.notify('📊 今日签到日报', content)
       logger.success('今日签到日报已推送')
     } catch (e: any) {
@@ -581,6 +639,52 @@ async function main() {
     logger.info(`每日签到日报已启用（每天 ${hour}:00 推送，当前${config.report?.enabled === false ? '关闭' : '开启'}）`)
   }
   if (config.report?.enabled !== false) scheduleDailyReport()
+
+  // 9.5.1 每日课前预检查：检查 Cookie 有效性和网络连通性
+  async function runPreCheck() {
+    try {
+      const problems: string[] = []
+      try { await accountManager.checkAll() } catch (e: any) { problems.push('账号登录校验失败: ' + e.message) }
+      try {
+        const r = await axios.get('https://passport2-api.chaoxing.com/', { timeout: 8000, validateStatus: () => true })
+        if (r.status >= 500) problems.push('学习通服务异常 (HTTP ' + r.status + ')')
+      } catch (e: any) { problems.push('无法连接学习通: ' + e.message) }
+      if (problems.length > 0) {
+        notifier.notify('⚠️ 课前预检查发现问题', problems.join('\n') + '\n\n请在上课前检查账号和网络，避免漏签。').catch(() => {})
+        logger.warn('课前预检查发现问题: ' + problems.join('; '))
+      } else {
+        logger.info('课前预检查通过：所有账号正常，网络连通')
+      }
+    } catch (e: any) { logger.error('课前预检查异常: ' + e.message) }
+  }
+  function schedulePreCheck() {
+    const now = new Date()
+    const hour = Math.max(0, Math.min(23, config.preCheck?.hour ?? 7))
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, 0, 0, 0)
+    if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1)
+    setTimeout(() => { runPreCheck().catch(() => {}); schedulePreCheck() }, next.getTime() - now.getTime())
+    logger.info('每日课前预检查已启用（每天 ' + hour + ':00 检查账号和网络）')
+  }
+  if (config.preCheck?.enabled !== false) schedulePreCheck()
+
+  // 9.5.2 智能轮询：白天短间隔，夜间长间隔，每小时检查一次
+  function applySmartPoll() {
+    if (!pollListener || config.smartPoll?.enabled === false) return
+    const now = new Date()
+    const h = now.getHours()
+    const dayStart = config.smartPoll?.dayStart ?? 8
+    const dayEnd = config.smartPoll?.dayEnd ?? 22
+    const mult = config.smartPoll?.nightMultiplier ?? 3
+    const isDay = h >= dayStart && h < dayEnd
+    const baseInterval = config.listener.pollInterval
+    pollListener.setInterval(isDay ? baseInterval : baseInterval * mult)
+  }
+  function scheduleSmartPoll() {
+    applySmartPoll()
+    setInterval(applySmartPoll, 60 * 60 * 1000)
+    logger.info('智能轮询已启用（白天 ' + (config.smartPoll?.dayStart ?? 8) + ':00-' + (config.smartPoll?.dayEnd ?? 22) + ':00 短间隔，夜间 ' + (config.smartPoll?.nightMultiplier ?? 3) + ' 倍间隔）')
+  }
+  if (config.smartPoll?.enabled !== false) scheduleSmartPoll()
 
   // 9.6 自动打开控制台（GUI 打包环境通过 NO_OPEN_BROWSER 禁用）
   if (config.web?.openBrowser !== false && !process.env.NO_OPEN_BROWSER) {

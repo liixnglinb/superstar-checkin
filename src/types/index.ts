@@ -179,6 +179,22 @@ export interface AppConfig {
     /** 每周签到周报：每周日推送本周统计（默认开启） */
     weekly?: boolean
   }
+  /** 每日课前预检查：每天固定时间检查 Cookie 有效性和网络连通性，有问题提前推送 */
+  preCheck?: {
+    enabled: boolean
+    /** 检查小时（0~23），默认 7 */
+    hour: number
+  }
+  /** 智能轮询：白天用短间隔，夜间用长间隔，减少无效请求 */
+  smartPoll?: {
+    enabled: boolean
+    /** 白天开始小时，默认 8 */
+    dayStart: number
+    /** 白天结束小时，默认 22 */
+    dayEnd: number
+    /** 夜间间隔倍数，默认 3 */
+    nightMultiplier: number
+  }
   dingtalk?: {
     appKey: string
     appSecret: string

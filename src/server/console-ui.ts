@@ -38,6 +38,8 @@ export interface ConsoleStatus {
   retryDelayMs?: number
   verifyEnabled?: boolean
   report?: { enabled: boolean; hour: number; weekly?: boolean }
+  preCheck?: { enabled: boolean; hour: number }
+  smartPoll?: { enabled: boolean; dayStart: number; dayEnd: number; nightMultiplier: number }
 }
 
 const ICONS = {
@@ -68,6 +70,8 @@ const ICONS = {
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>',
   power: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg>',
   shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5.5 3.8 9.7 8 11 4.2-1.3 8-5.5 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>',
 }
 
 function esc(s: any): string {
@@ -250,6 +254,18 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
         <button class="switch ${status.report?.weekly !== false ? 'on' : ''}" id="setWeeklyReport" type="button" role="switch"><span class="knob"></span></button>
         <span class="field-hint" style="line-height:1.5">每周日推送本周签到统计与漏签课程名单</span>
       </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setPreCheck" style="width:104px">课前预检查</label>
+        <button class="switch ${status.preCheck?.enabled !== false ? 'on' : ''}" id="setPreCheck" type="button" role="switch"><span class="knob"></span></button>
+        <span class="field-hint" style="line-height:1.5">每天指定时间检查账号登录和网络，有问题提前推送</span>
+        <input type="number" id="setPreCheckHour" min="0" max="23" value="${status.preCheck?.hour ?? 7}" style="width:52px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px">
+        <span class="field-hint">时</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="field-label" for="setSmartPoll" style="width:104px">智能轮询</label>
+        <button class="switch ${status.smartPoll?.enabled !== false ? 'on' : ''}" id="setSmartPoll" type="button" role="switch"><span class="knob"></span></button>
+        <span class="field-hint" style="line-height:1.5">白天短间隔轮询，夜间3倍长间隔，减少无效请求</span>
+      </div>
 
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <label class="field-label" for="setAutoLaunch" style="width:104px">开机自启</label>
@@ -259,6 +275,10 @@ export function getConsolePage(status: ConsoleStatus, token: string): string {
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:4px">
         <button class="btn btn-primary" id="settingsSaveBtn">保存设置</button>
         <button class="btn btn-ghost" id="notifyTestBtn">${ICONS.bell}<span>发送测试通知</span></button>
+        <button class="btn btn-ghost" id="cfgExportBtn">${ICONS.download}<span>导出配置</span></button>
+        <button class="btn btn-ghost" id="cfgImportBtn">${ICONS.upload}<span>导入配置</span></button>
+        <input type="file" id="cfgFileInput" accept=".json" style="display:none">
+        <span class="cfg-msg" id="cfgMsg"></span>
         <span class="cfg-msg" id="settingsMsg"></span>
       </div>
     </div>`
@@ -516,6 +536,33 @@ tr:hover td{background:#FCFAF8}
 .diag-ms{font-size:12px;color:var(--text-3);width:70px;text-align:right;flex-shrink:0}
 .diag-detail{font-size:12.5px;color:var(--text-2);line-height:1.5}
 
+
+/* 课表页 */
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;padding:16px 18px}
+.stat-card{background:var(--surface-2);border-radius:var(--radius);padding:14px 12px;text-align:center;border:1px solid var(--border)}
+.stat-num{font-size:24px;font-weight:700;color:var(--accent);line-height:1.2}
+.stat-label{font-size:12px;color:var(--text-3);margin-top:4px}
+.course-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:14px 18px}
+.course-card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;transition:border-color .15s,box-shadow .15s;position:relative}
+.course-card:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.course-card.watching{border-left:3px solid var(--accent)}
+.course-card.retired{opacity:.55;border-left:3px solid var(--text-3)}
+.course-card-name{font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px;line-height:1.3}
+.course-card-teacher{font-size:12px;color:var(--text-3);margin-bottom:10px}
+.course-card-stats{display:flex;gap:14px;font-size:12px}
+.course-card-stat-ok{color:#2e9e5b;font-weight:600}
+.course-card-stat-fail{color:#d45050;font-weight:600}
+.course-card-badge{position:absolute;top:10px;right:10px;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
+.badge-on{background:var(--accent-weak);color:var(--accent)}
+.badge-off{background:var(--surface-3);color:var(--text-3)}
+.badge-retired{background:#eee;color:#999}
+.grid-empty{grid-column:1/-1;text-align:center;color:var(--text-3);padding:40px 0;font-size:13px}
+/* 多账号统计 */
+.acct-stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;padding:12px 18px}
+.acct-stat-card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
+.acct-stat-name{font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px}
+.acct-stat-meta{font-size:11px;color:var(--text-3);margin-bottom:8px}
+.acct-stat-nums{display:flex;gap:14px;font-size:12px}
 </style>
 </head>
 <body>
@@ -540,6 +587,7 @@ tr:hover td{background:#FCFAF8}
     <nav class="nav" id="nav">
       <button class="nav-item active" data-view="overview">${ICONS.home}<span>总览</span></button>
       <button class="nav-item" data-view="courses">${ICONS.courses}<span>课程</span></button>
+      <button class="nav-item" data-view="schedule">${ICONS.calendar}<span>课表</span></button>
       <button class="nav-item" data-view="history">${ICONS.history}<span>历史记录</span></button>
       <button class="nav-item" data-view="logs">${ICONS.log}<span>日志</span></button>
       <button class="nav-item" data-view="settings">${ICONS.settings}<span>设置</span></button>
@@ -579,6 +627,10 @@ tr:hover td{background:#FCFAF8}
         <div class="section">
           <div class="section-head"><span class="section-title">账号</span></div>
           <div id="accountsBox">${accountRows}</div>
+          <div style="padding:0 18px 14px">
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:8px;font-weight:600">各账号签到统计</div>
+            <div class="acct-stat-row" id="acctStatsBox"><div style="color:var(--text-3);font-size:12px">加载中...</div></div>
+          </div>
         </div>
       </section>
 
@@ -603,6 +655,24 @@ tr:hover td{background:#FCFAF8}
             <thead><tr><th>课程</th><th>签到成功</th><th>签到失败</th><th>成功率</th></tr></thead>
             <tbody id="courseStatsBody"></tbody>
           </table>
+        </div>
+      </section>
+
+      <!-- 课表 -->
+      <section class="view" data-view="schedule">
+        <div class="section">
+          <div class="section-head"><span class="section-title">本周课表概览</span><span class="section-more">课程监听状态与签到统计</span></div>
+          <div class="stat-row" id="scheduleStats">
+            <div class="stat-card"><div class="stat-num" id="schTotal">0</div><div class="stat-label">总课程</div></div>
+            <div class="stat-card"><div class="stat-num" id="schWatching">0</div><div class="stat-label">监听中</div></div>
+            <div class="stat-card"><div class="stat-num" id="schRetired">0</div><div class="stat-label">已结课</div></div>
+            <div class="stat-card"><div class="stat-num" id="schSuccess">0</div><div class="stat-label">累计签到成功</div></div>
+            <div class="stat-card"><div class="stat-num" id="schFail">0</div><div class="stat-label">累计签到失败</div></div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><span class="section-title">课程列表</span><span class="section-more">点击卡片切换监听状态</span></div>
+          <div class="course-grid" id="scheduleGrid"><div class="grid-empty">加载中...</div></div>
         </div>
       </section>
 
@@ -813,14 +883,14 @@ tr:hover td{background:#FCFAF8}
 
 <script>
 (function(){
-  var views=['overview','courses','history','logs','settings']
-  var titles={overview:'总览',courses:'课程',history:'历史记录',logs:'运行日志',settings:'设置'}
+  var views=['overview','courses','schedule','history','logs','settings']
+  var titles={overview:'总览',courses:'课程',schedule:'课表',history:'历史记录',logs:'运行日志',settings:'设置'}
   function show(v){
     if(views.indexOf(v)<0)v='overview'
     document.querySelectorAll('.view').forEach(function(el){el.classList.toggle('active',el.dataset.view===v)})
     document.querySelectorAll('.nav-item').forEach(function(el){el.classList.toggle('active',el.dataset.view===v)})
     document.getElementById('pageTitle').textContent=titles[v]
-    if(v==='logs')loadLogs()
+    if(v==='logs')loadLogs();if(v==='schedule')loadSchedule()
   }
   document.getElementById('nav').addEventListener('click',function(e){
     var btn=e.target.closest('.nav-item');if(!btn)return
@@ -970,6 +1040,20 @@ tr:hover td{background:#FCFAF8}
             return '<div class="acct-row"><span class="acct-avatar">'+esc(nm.slice(0,1))+'</span><div class="acct-info"><div class="acct-name">'+esc(nm)+'</div><div class="acct-sub">'+esc(a.schoolname||'')+' · '+esc(String(a.username))+'</div></div><span class="pill pill-ok">已登录</span></div>'
           }).join('')
         : '<div class="empty"><p>未配置账号</p><p class="empty-sub">首次使用请在"设置"页填写你的学习通账号</p><a class="btn btn-ghost" href="#settings" style="margin-top:12px">去配置账号</a></div>'
+    }
+    // 多账号独立统计
+    var asb=document.getElementById('acctStatsBox')
+    if(asb){
+      var asts=s.accountStats||[]
+      asb.innerHTML=asts.length
+        ? asts.map(function(a){
+            var total=(a.success||0)+(a.fail||0)
+            var rate=total>0?Math.round((a.success||0)/total*100):0
+            var lt=a.lastTime?new Date(a.lastTime):null
+            var ltStr=lt?(lt.getMonth()+1)+'/'+lt.getDate()+' '+String(lt.getHours()).padStart(2,'0')+':'+String(lt.getMinutes()).padStart(2,'0'):'从未'
+            return '<div class="acct-stat-card"><div class="acct-stat-name">'+esc(a.name||a.username||'?')+'</div><div class="acct-stat-meta">最近签到: '+ltStr+'</div><div class="acct-stat-nums"><span style="color:#2e9e5b;font-weight:600">成功 '+(a.success||0)+'</span><span style="color:#d45050;font-weight:600">失败 '+(a.fail||0)+'</span><span style="color:var(--text-3)">成功率 '+rate+'%</span></div></div>'
+          }).join('')
+        : '<div style="color:var(--text-3);font-size:12px">暂无签到记录</div>'
     }
     // 课程表（含监听开关）
     var cb=document.getElementById('coursesBody')
@@ -1228,7 +1312,7 @@ tr:hover td{background:#FCFAF8}
       pollInterval:poll,pollJitter:jitter,retryMaxAttempts:retry,retryDelayMs:retryDelay*1000,
       locationRadius:radius,desktop:desktop,quietEnabled:quietOn,quietStart:qs,quietEnd:qe,
 
-      reportEnabled:reportOn,reportHour:reportHour,verifyEnabled:verify,weeklyReport:document.getElementById('setWeeklyReport').classList.contains('on')
+      reportEnabled:reportOn,reportHour:reportHour,verifyEnabled:verify,weeklyReport:document.getElementById('setWeeklyReport').classList.contains('on'),preCheckEnabled:document.getElementById('setPreCheck').classList.contains('on'),preCheckHour:document.getElementById('setPreCheckHour').value,smartPollEnabled:document.getElementById('setSmartPoll').classList.contains('on')
 
     })})
       .then(function(r){return r.json()})
@@ -1245,7 +1329,32 @@ tr:hover td{background:#FCFAF8}
     if(el)el.addEventListener('click',function(){el.classList.toggle('on')})
   }
 
-  bindSwitch('setDesktop');bindSwitch('setQuiet');bindSwitch('setReport');bindSwitch('setVerify');bindSwitch('setWeeklyReport')
+  bindSwitch('setDesktop');bindSwitch('setQuiet');bindSwitch('setReport');bindSwitch('setVerify');bindSwitch('setWeeklyReport');bindSwitch('setPreCheck');bindSwitch('setSmartPoll')
+  // 配置导出
+  var cfgExportBtn=document.getElementById('cfgExportBtn')
+  if(cfgExportBtn)cfgExportBtn.addEventListener('click',function(){
+    window.location.href='/api/config/export'
+  })
+  // 配置导入
+  var cfgImportBtn=document.getElementById('cfgImportBtn')
+  var cfgFileInput=document.getElementById('cfgFileInput')
+  if(cfgImportBtn&&cfgFileInput)cfgImportBtn.addEventListener('click',function(){cfgFileInput.click()})
+  if(cfgFileInput)cfgFileInput.addEventListener('change',function(){
+    var f=cfgFileInput.files[0];if(!f)return
+    var reader=new FileReader()
+    reader.onload=function(){
+      fetch('/api/config/import',{method:'POST',headers:{'Content-Type':'application/json'},body:reader.result})
+        .then(function(r){return r.json()})
+        .then(function(d){
+          var msg=document.getElementById('cfgMsg')
+          if(msg){msg.textContent=(d.ok?'✅ ':'❌ ')+(d.message||'操作失败');msg.style.color=d.ok?'#178A5B':'#B42318'}
+          if(d.ok)setTimeout(function(){location.reload()},1500)
+        })
+        .catch(function(){var msg=document.getElementById('cfgMsg');if(msg){msg.textContent='❌ 导入失败';msg.style.color='#B42318'}})
+    }
+    reader.readAsText(f)
+  })
+
 
 
   // ===== 签到日历（月历视图） =====
@@ -1402,6 +1511,37 @@ tr:hover td{background:#FCFAF8}
   })
 
   // ===== 运行日志查看 =====
+  function loadSchedule(){
+    var grid=document.getElementById('scheduleGrid');if(!grid)return
+    grid.innerHTML='<div class="grid-empty">加载中...</div>'
+    fetch('/api/schedule').then(function(r){return r.json()}).then(function(d){
+      if(!d.ok||!d.schedule){grid.innerHTML='<div class="grid-empty">加载失败</div>';return}
+      var list=d.schedule
+      var total=list.length,watching=list.filter(function(c){return c.watching&&!c.isRetired}).length,retired=list.filter(function(c){return c.isRetired}).length
+      var succ=list.reduce(function(a,c){return a+(c.success||0)},0),fail=list.reduce(function(a,c){return a+(c.fail||0)},0)
+      document.getElementById('schTotal').textContent=total
+      document.getElementById('schWatching').textContent=watching
+      document.getElementById('schRetired').textContent=retired
+      document.getElementById('schSuccess').textContent=succ
+      document.getElementById('schFail').textContent=fail
+      if(total===0){grid.innerHTML='<div class="grid-empty">暂无课程，请先在设置页登录账号</div>';return}
+      grid.innerHTML=list.map(function(c){
+        var badge=c.isRetired?'<span class="course-card-badge badge-retired">已结课</span>':(c.watching?'<span class="course-card-badge badge-on">监听中</span>':'<span class="course-card-badge badge-off">已停用</span>')
+        var cls='course-card'+(c.watching&&!c.isRetired?' watching':'')+(c.isRetired?' retired':'')
+        return '<div class="'+cls+'" data-cid="'+esc(c.courseId)+'">'+badge+'<div class="course-card-name">'+esc(c.courseName)+'</div><div class="course-card-teacher">'+esc(c.teacherName||'未知老师')+'</div><div class="course-card-stats"><span class="course-card-stat-ok">成功 '+(c.success||0)+'</span><span class="course-card-stat-fail">失败 '+(c.fail||0)+'</span></div></div>'
+      }).join('')
+      grid.querySelectorAll('.course-card').forEach(function(card){
+        card.addEventListener('click',function(){
+          var cid=card.dataset.cid
+          var ws=JSON.parse(localStorage.getItem('watchLocal')||'{}')
+          ws[cid]=ws[cid]===undefined?false:!ws[cid]
+          localStorage.setItem('watchLocal',JSON.stringify(ws))
+          loadSchedule()
+        })
+      })
+    }).catch(function(){grid.innerHTML='<div class="grid-empty">加载失败，请检查服务状态</div>'})
+  }
+
   function loadLogs(){
     var box=document.getElementById('logBox')
     if(!box)return
