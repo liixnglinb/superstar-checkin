@@ -94,7 +94,7 @@
       "en-US"
     ],
     "win": {
-      "icon": "assets/app-icon.ico",
+      "icon": "assets/app-icon.png",
       "target": [
         {
           "target": "nsis",
