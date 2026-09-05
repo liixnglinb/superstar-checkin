@@ -72,7 +72,20 @@
       "!node_modules/tencentcloud-sdk-nodejs/**",
       "!node_modules/sharp/**",
       "!node_modules/nodemailer/**",
-      "!node_modules/electron/**"
+      "!node_modules/electron/**",
+      "!node_modules/**/*.md",
+      "!node_modules/**/*.txt",
+      "!node_modules/**/*.map",
+      "!node_modules/**/test/**",
+      "!node_modules/**/tests/**",
+      "!node_modules/**/docs/**",
+      "!node_modules/**/doc/**",
+      "!node_modules/**/example/**",
+      "!node_modules/**/examples/**",
+      "!node_modules/**/.github/**",
+      "!node_modules/**/LICENSE*",
+      "!node_modules/**/CHANGELOG*",
+      "!node_modules/**/HISTORY*"
     ],
     "asar": true,
     "npmRebuild": false,
@@ -102,6 +115,10 @@
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "artifactName": "学习通自动签到-安装版-${version}.${ext}"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/**/*.node"
+    ],
+    "compression": "maximum"
   }
 }
