@@ -977,7 +977,8 @@ tr:hover td{background:#FCFAF8}
       // 已下载：立即安装（启动安装向导后软件自动退出）
       updateGo.disabled=true;updateGo.textContent='正在启动安装…'
       window.updateCtl.install(updateState.file).then(function(r){
-        if(!r||!r.ok){updateGo.disabled=false;updateGo.textContent='立即安装';updateBody.innerHTML='<div class="cell-empty">安装启动失败：'+(r&&r.message?esc(r.message):'未知错误')+'</div>'}
+        if(!r||!r.ok){updateGo.disabled=false;updateGo.textContent='立即安装'
+        if(r&&r.source){updateBarText.textContent='下载完成（'+r.source+'），点击立即安装'};updateBody.innerHTML='<div class="cell-empty">安装启动失败：'+(r&&r.message?esc(r.message):'未知错误')+'</div>'}
       }).catch(function(){updateGo.disabled=false;updateGo.textContent='立即安装';updateBody.innerHTML='<div class="cell-empty">安装启动失败，请稍后重试</div>'})
       return
     }
@@ -1012,10 +1013,15 @@ tr:hover td{background:#FCFAF8}
   // 下载进度（仅注册一次）
   if(window.updateCtl&&window.updateCtl.onProgress){
     window.updateCtl.onProgress(function(d){
-      if(d&&d.phase==='downloading'&&updateBarFill){
+      if(!d)return
+      if(d.phase==='connecting'){
+        updateBarFill.style.width='0%'
+        updateBarText.textContent='正在连接 '+ (d.source||'下载源') +'…'
+      }else if(d.phase==='downloading'&&updateBarFill){
         var pct=d.pct||0
         updateBarFill.style.width=pct+'%'
-        updateBarText.textContent='正在下载安装包… '+pct+'%'
+        var src=d.source?('（'+d.source+'）'):''
+        updateBarText.textContent='正在下载安装包… '+pct+'% '+src
       }
     })
   }

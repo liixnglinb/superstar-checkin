@@ -174,6 +174,20 @@ app.whenReady().then(() => {
   // ===== 检查更新（GitHub Releases：软件内「检查更新」按钮） =====
   const REPO_LATEST = process.env.UPDATE_URL || 'https://api.github.com/repos/liixnglinb/superstar-checkin/releases/latest'
   const UA = { 'User-Agent': 'superstar-checkin-desktop' }
+  // GitHub 下载加速镜像源（国内访问快），按优先级排序，自动尝试直到成功
+  const DOWNLOAD_MIRRORS = [
+    'https://gh-proxy.com/',
+    'https://mirror.ghproxy.com/',
+    'https://ghproxy.net/',
+    'https://github.moeyy.xyz/',
+    'https://gh.api.99988866.xyz/',
+  ]
+  // 生成带镜像前缀的下载 URL 列表（镜像优先，原始 URL 兜底）
+  function getDownloadUrls(originalUrl) {
+    const urls = DOWNLOAD_MIRRORS.map((m) => m + originalUrl)
+    urls.push(originalUrl) // 原始 URL 放最后兜底
+    return urls
+  }
 
   function compareVersions(a, b) {
     const pa = String(a || '').replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0)
@@ -273,10 +287,25 @@ app.whenReady().then(() => {
       const asset = (rel.assets || []).find((a) => /\.exe$/.test(a.name || ''))
       if (!asset || !asset.browser_download_url) throw new Error('安装包不存在')
       const target = path.join(app.getPath('temp'), asset.name || '学习通自动签到-更新.exe')
-      await downloadFile(asset.browser_download_url, target, (pct) => {
-        event.sender.send('update-progress', { phase: 'downloading', pct })
-      })
-      return { ok: true, file: target }
+      const urls = getDownloadUrls(asset.browser_download_url)
+      let lastError = null
+      for (let i = 0; i < urls.length; i++) {
+        const url = urls[i]
+        const isMirror = i < urls.length - 1
+        const sourceName = isMirror ? ('镜像' + (i + 1) + ' (' + DOWNLOAD_MIRRORS[i].replace('https://', '').replace('/', '') + ')') : 'GitHub 直连'
+        event.sender.send('update-progress', { phase: 'connecting', source: sourceName, mirrorIndex: i })
+        try {
+          await downloadFile(url, target, (pct) => {
+            event.sender.send('update-progress', { phase: 'downloading', pct, source: sourceName, mirrorIndex: i })
+          })
+          return { ok: true, file: target, source: sourceName, mirrorUsed: isMirror }
+        } catch (e) {
+          lastError = e
+          // 清理不完整的下载文件
+          try { if (fs.existsSync(target)) fs.unlinkSync(target) } catch (_) {}
+        }
+      }
+      throw lastError || new Error('所有下载源均失败')
     } catch (e) {
       return { ok: false, message: String((e && e.message) || e) }
     }
