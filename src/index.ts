@@ -1,4 +1,4 @@
-import { logger } from './utils/logger'
+﻿import { logger } from './utils/logger'
 import { loadConfig } from './providers/config'
 import { initStorage } from './providers/storage'
 import { AccountManager } from './providers/account-manager'
@@ -783,8 +783,11 @@ async function main() {
 
   const watched = new Set<string>()
   fs.watch(qrDir, async (_event, filename) => {
-    if (!filename || !/\.(png|jpg|jpeg|bmp)$/i.test(filename)) return
-    const filePath = path.join(qrDir, filename)
+    if (!filename) return
+    // 安全校验：只取文件名部分，防止路径穿越（如 ../evil.png 跳出 qrcode 目录）
+    const safeName = path.basename(filename)
+    if (!/\.(png|jpg|jpeg|bmp)$/i.test(safeName)) return
+    const filePath = path.join(qrDir, safeName)
     if (watched.has(filePath)) return
     watched.add(filePath)
     if (watched.size > 100) watched.clear()
