@@ -357,6 +357,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle('update-install', async (_e, file) => {
     try {
+      // 安全校验：只允许打开 .exe 安装包，且文件必须真实存在，防止任意文件打开
+      if (typeof file !== 'string' || !/\.exe$/i.test(file)) {
+        return { ok: false, message: '无效的安装包文件类型' }
+      }
+      const fs = require('fs')
+      if (!fs.existsSync(file)) {
+        return { ok: false, message: '安装包文件不存在，请重新下载' }
+      }
       const err = await shell.openPath(file)
       if (err) return { ok: false, message: err }
       // 启动安装向导后退出当前应用，避免安装时文件占用导致失败
