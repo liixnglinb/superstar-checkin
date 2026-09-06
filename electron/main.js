@@ -189,6 +189,43 @@ app.whenReady().then(() => {
     return urls
   }
 
+  // 测速：并发下载前 128KB，计算每个源的实际速度，选最快
+  function testSourceSpeed(url, timeoutMs = 8000) {
+    return new Promise((resolve) => {
+      const axios = require('axios')
+      const start = Date.now()
+      let loaded = 0
+      let done = false
+      const source = axios.CancelToken.source()
+      const finish = (ok) => {
+        if (done) return
+        done = true
+        try { source.cancel('speedtest') } catch (_) {}
+        const elapsed = Math.max(0.1, (Date.now() - start) / 1000)
+        resolve({ url, speedBps: ok ? loaded / elapsed : 0, ok, loaded })
+      }
+      axios.get(url, {
+        headers: Object.assign({ Range: 'bytes=0-131071' }, UA),
+        proxy: getUpdateProxy(),
+        timeout: timeoutMs,
+        responseType: 'stream',
+        cancelToken: source.token,
+        onDownloadProgress: (evt) => {
+          loaded = evt.loaded || loaded
+          if (loaded >= 131072) finish(true)
+        },
+      }).then(() => finish(true)).catch(() => finish(loaded > 1024))
+    })
+  }
+
+  async function rankSourcesBySpeed(urls, event) {
+    event.sender.send('update-progress', { phase: 'testing', source: '正在测速，自动选择最快下载源…' })
+    const results = await Promise.all(urls.map((u) => testSourceSpeed(u)))
+    const ok = results.filter((r) => r.ok && r.speedBps > 0).sort((a, b) => b.speedBps - a.speedBps)
+    const fail = results.filter((r) => !r.ok)
+    return ok.concat(fail)
+  }
+
   function compareVersions(a, b) {
     const pa = String(a || '').replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0)
     const pb = String(b || '').replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0)
@@ -288,17 +325,24 @@ app.whenReady().then(() => {
       if (!asset || !asset.browser_download_url) throw new Error('安装包不存在')
       const target = path.join(app.getPath('temp'), asset.name || '学习通自动签到-更新.exe')
       const urls = getDownloadUrls(asset.browser_download_url)
+      // 先测速，按速度从快到慢排序（自动匹配最快下载源）
+      const ranked = await rankSourcesBySpeed(urls, event)
       let lastError = null
-      for (let i = 0; i < urls.length; i++) {
-        const url = urls[i]
-        const isMirror = i < urls.length - 1
-        const sourceName = isMirror ? ('镜像' + (i + 1) + ' (' + DOWNLOAD_MIRRORS[i].replace('https://', '').replace('/', '') + ')') : 'GitHub 直连'
-        event.sender.send('update-progress', { phase: 'connecting', source: sourceName, mirrorIndex: i })
+      for (let i = 0; i < ranked.length; i++) {
+        const item = ranked[i]
+        const url = item.url
+        const isMirror = !url.startsWith('https://github.com/')
+        const mirrorIdx = isMirror ? DOWNLOAD_MIRRORS.findIndex((m) => url.startsWith(m)) : -1
+        const sourceName = isMirror
+          ? (mirrorIdx >= 0 ? ('镜像' + (mirrorIdx + 1) + ' (' + DOWNLOAD_MIRRORS[mirrorIdx].replace('https://', '').replace('/', '') + ')') : '镜像')
+          : 'GitHub 直连'
+        const speedText = item.ok && item.speedBps > 0 ? (' · 测速 ' + (item.speedBps / 1024 / 1024).toFixed(1) + 'MB/s') : ''
+        event.sender.send('update-progress', { phase: 'connecting', source: sourceName + speedText, mirrorIndex: mirrorIdx })
         try {
           await downloadFile(url, target, (pct) => {
-            event.sender.send('update-progress', { phase: 'downloading', pct, source: sourceName, mirrorIndex: i })
+            event.sender.send('update-progress', { phase: 'downloading', pct, source: sourceName, mirrorIndex: mirrorIdx })
           })
-          return { ok: true, file: target, source: sourceName, mirrorUsed: isMirror }
+          return { ok: true, file: target, source: sourceName, mirrorUsed: isMirror, speedBps: item.speedBps }
         } catch (e) {
           lastError = e
           // 清理不完整的下载文件
